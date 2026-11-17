@@ -18,15 +18,28 @@ rm -f "$ROMS_DIR/Google Play Store.android" "$ROMS_DIR/APK Installer - Uninstall
 [ -s "$CACHE" ] || { echo "sync: no app list cached yet (start any Android entry once)"; exit 0; }
 
 # System / framework packages that should not show up as games
+# Which apps count as games: Android's own list of apps YOU installed (written by
+# installed-apps.sh when you leave Android), so nothing is hidden just by its name.
+# Older caches without that list fall back to name patterns.
+USER_PKGS="$ROMS_DIR/.cache/user-packages.txt"
+declare -A USER
+if [ -s "$USER_PKGS" ]; then while read -r p; do [ -n "$p" ] && USER["$p"]=1; done < "$USER_PKGS"; fi
+
 is_system_pkg() {
+    case "$1" in
+        org.fdroid.fdroid|org.fdroid.basic|com.aurora.store|cm.aptoide.pt|\
+        com.android.vending) return 0 ;;                       # app stores live in the F1 menu
+    esac
+    if [ ${#USER[@]} -gt 0 ]; then
+        [ -z "${USER[$1]}" ]                                   # not installed by you -> system app
+        return
+    fi
     case "$1" in
         android|android.*|com.android.*|com.google.android.*|com.google.*|org.lineageos.*|\
         id.waydro.*|org.chromium.*|com.qualcomm.*|org.codeaurora.*|com.waydroid.*) return 0 ;;
-        org.fdroid.fdroid|org.fdroid.basic|com.aurora.store|cm.aptoide.pt) return 0 ;;   # stores live in F1
     esac
     return 1
 }
-
 declare -A KEEP
 name=""
 while IFS= read -r line; do
@@ -54,9 +67,14 @@ for f in "$ROMS_DIR"/*.android; do
 done
 echo "sync: done (${#KEEP[@]} apps)"
 
-# 3D jewel-case boxes + metadata from the LaunchBox Games Database (in the background,
-# so returning to EmulationStation is never delayed). Skip with: --no-scrape
+# 3D jewel-case boxes + metadata (LaunchBox, ScreenScraper, Google Play, F-Droid) run in the background
+# so returning to EmulationStation is never delayed. Skip with: --no-scrape
 if [ "$1" != "--no-scrape" ] && [ -x "$ROOTFS/usr/bin/python3" ] && is_mounted "$ROOTFS/proc"; then
-    ( in_chroot python3 /opt/android/scrape-launchbox.py ${FORCE_SCRAPE:+--force} >>"$LOG" 2>&1
+    # your ScreenScraper login saved in Batocera's scraper settings (raises ScreenScraper's quota)
+    ES_CFG=/userdata/system/configs/emulationstation/es_settings.cfg
+    ss_get() { sed -n "s/.*name=\"$1\" value=\"\([^\"]*\)\".*/\1/p" "$ES_CFG" 2>/dev/null | tail -n1; }
+    SS_USER="$(ss_get ScreenScraperUser)"; SS_PASS="$(ss_get ScreenScraperPass)"
+    ( in_chroot env SS_USER="$SS_USER" SS_PASS="$SS_PASS" \
+        python3 /opt/android/scrape-launchbox.py ${FORCE_SCRAPE:+--force} >>"$LOG" 2>&1
       reload_es ) </dev/null >/dev/null 2>&1 &
 fi

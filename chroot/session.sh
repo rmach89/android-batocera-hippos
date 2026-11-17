@@ -41,27 +41,14 @@ run_manager() {
     kill $kp 2>/dev/null
 }
 # App stores in the F1 menu (F-Droid, Aurora Store, Aptoide) install themselves the first
-# time they are opened; store-apk-url.py knows each store's official download.
-ensure_app() {      # ensure_app <package>
-    local pkg="$1" url md5 apk
-    read -r url md5 < <(python3 /opt/android/store-apk-url.py "$pkg" 2>/dev/null) || true
-    [ -n "$url" ] || return 0
-    waydroid shell -- pm list packages 2>/dev/null | tr -d '\r' | grep -qx "package:$pkg" && return 0
-    apk="/var/cache/android-addon/$pkg.apk"; mkdir -p "$(dirname "$apk")"
-    if [ ! -s "$apk" ]; then
-        curl -fsSL -m 300 -o "$apk.part" "$url" && mv -f "$apk.part" "$apk"
-    fi
-    if [ -n "$md5" ] && [ -s "$apk" ] && [ "$(md5sum < "$apk" | cut -d' ' -f1)" != "$md5" ]; then
-        rm -f "$apk"; return 1                       # corrupted / tampered download
-    fi
-    [ -s "$apk" ] && waydroid app install "$apk" >/dev/null 2>&1
-    sleep 3
-}
+# time they are opened and update themselves to the newest official build (checked daily).
+ensure_app() { /opt/android/update-stores.sh ensure "$1"; }
 
 leave_android() {   # back to ES: save state, refresh lists
     waydroid shell -- input keyevent KEYCODE_HOME >/dev/null 2>&1   # pauses the game
     cache_apps
-    /opt/android/store-play-apps.sh >/dev/null 2>&1                  # copy Google Play installs
+    /opt/android/installed-apps.sh --cache >/dev/null 2>&1          # what YOU installed -> game list
+    /opt/android/store-installed-apps.sh >/dev/null 2>&1             # copies of every store install
     /opt/android/detect-input.sh >/dev/null 2>&1                     # controller / touch badges
 }
 

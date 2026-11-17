@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
-"""Scrape the LaunchBox Games Database (platform: Android) for every game in the
-ANDROID system and write 3D jewel-case boxes + metadata to gamelist.xml.
+"""Scrape metadata for every game in the ANDROID system and write 3D jewel-case boxes,
+background art and game info to gamelist.xml.
+
+Sources, first one that has something wins (per field):
+  1. LaunchBox Games Database (platform: Android)   - real box covers
+  2. ScreenScraper                                   - box art, wheel logo (needs a developer ID)
+  3. Google Play store listing                        - hi-res icon, feature graphic, text, rating
+  4. F-Droid                                          - open-source apps (tried before Google Play
+                                                        for apps that came from F-Droid)
+Change the order or turn sources off with SCRAPE_SOURCES in android.conf.
 
 Runs INSIDE the chroot.  Paths as seen there:
   /mnt/android-roms/*.android            ES entries (line 2 = package name)
@@ -15,11 +23,12 @@ the Android games in a small JSON index, then delete the zip.  Refreshed every 3
   scrape-launchbox.py --force    redo every box
   scrape-launchbox.py --refresh  re-download the LaunchBox database first
 """
-import os, re, sys, json, time, fcntl, glob, difflib, zipfile, unicodedata, urllib.request, html
+import os, re, sys, json, time, fcntl, glob, difflib, zipfile, unicodedata, urllib.parse, urllib.request, html
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from make_box3d import render   # noqa: E402
+import metadata_sources as ms   # noqa: E402
 from PIL import Image, ImageDraw, ImageFont
 
 ROMS = "/mnt/android-roms"
@@ -35,6 +44,9 @@ BADGES = os.path.join(CACHE, "badges.json")                               # badg
 META_URL = "https://gamesdb.launchbox-app.com/Metadata.zip"
 IMG_URL = "https://images.launchbox-app.com/{}"
 WAYDROID_ICONS = "/root/.local/share/waydroid/data/icons"
+APP_SOURCES = os.path.join(ROMS, ".cache", "app-sources.txt")          # from installed-apps.sh
+SETTINGS = "/etc/android-addon/android.conf"
+DEFAULT_SOURCES = "launchbox screenscraper googleplay fdroid"
 MARK = "# managed-by-android-addon"
 UA = {"User-Agent": "batocera-android-addon/1.0"}
 IMAGE_PRIORITY = ["Box - Front", "Box - Front - Reconstructed", "Fanart - Box - Front",
@@ -147,16 +159,36 @@ class Matcher:
 
 
 # ---------------------------------------------------------------- art sources
-def fetch_cover(fname, dest):
+def fetch_url(url, dest):
     try:
-        download(IMG_URL.format(urllib.request.quote(fname)), dest)
+        download(url, dest)
         Image.open(dest).verify()
         return True
     except Exception as e:
-        log("image download failed:", fname, e)
+        log("image download failed:", url.split("?")[0], e)
         if os.path.exists(dest):
             os.remove(dest)
         return False
+
+
+def fetch_cover(fname, dest):
+    return fetch_url(IMG_URL.format(urllib.request.quote(fname)), dest)
+
+
+def cached_image(url, key):
+    """download an image once into the cache, return its path (or None)"""
+    if not url:
+        return None
+    ext = os.path.splitext(urllib.parse.urlparse(url).path)[1].lower()
+    raw = os.path.join(CACHE, "img-" + re.sub(r"[^A-Za-z0-9._-]", "_", key) + (ext if ext in (".png", ".jpg", ".jpeg", ".webp") else ".img"))
+    return raw if os.path.exists(raw) or fetch_url(url, raw) else None
+
+
+def save_as(src, dest, mode="RGB"):
+    im = Image.open(src)
+    im = im.convert("RGBA" if mode == "RGBA" else "RGB")
+    im.save(dest)
+    return dest
 
 
 def waydroid_icon(pkg):
@@ -233,6 +265,19 @@ def main():
                     k, v = l.split("=", 1); out[k.strip()] = v.strip()
         return out
     overrides = read_conf(OVERRIDES)
+    conf = read_conf(SETTINGS)
+    order = (conf.get("SCRAPE_SOURCES") or DEFAULT_SOURCES).replace(",", " ").lower().split()
+    ss = ms.ScreenScraper(conf.get("SCREENSCRAPER_DEVID", ""), conf.get("SCREENSCRAPER_DEVPASSWORD", ""),
+                          conf.get("SCREENSCRAPER_USER") or os.environ.get("SS_USER", ""),
+                          conf.get("SCREENSCRAPER_PASSWORD") or os.environ.get("SS_PASS", ""))
+    if "screenscraper" in order and not ss.ok:
+        log("ScreenScraper skipped: no developer ID (SCREENSCRAPER_DEVID in android.conf)")
+    installed_from = {}
+    if os.path.exists(APP_SOURCES):
+        for l in open(APP_SOURCES):
+            parts = l.rstrip("\n").split("\t")
+            if len(parts) >= 2:
+                installed_from[parts[0]] = parts[1]
 
     # controller / touch badge per package (override > manifest detection > none)
     support = {}
@@ -252,48 +297,84 @@ def main():
             or drawn.get(e[2]) != badge_of(e[2])]          # badge became known / changed
 
     games, matcher = {}, None
-    if todo:
+    if todo and "launchbox" in order:
         try:
             games = build_index(force=refresh); matcher = Matcher(games)
         except Exception as e:
-            log("LaunchBox database unavailable, using app icons:", e)
+            log("LaunchBox database unavailable, trying the other sources:", e)
     matches = json.load(open(MATCHES)) if os.path.exists(MATCHES) else {}
 
     for fname, title, pkg in todo:
         path = "./" + fname
         gid = overrides.get(pkg) or (matcher.find(title) if matcher else None)
         g = games.get(gid) if gid else None
+
+        # every source as the same dict shape, in the configured order
+        lb = {}
+        if g:
+            lb = {"name": g["name"], "desc": html.unescape(g["overview"]), "dev": g["dev"], "pub": g["pub"],
+                  "date": g["date"], "genre": g["genre"].split(";")[0].strip()}
+            try:
+                lb["rating"] = round(min(1.0, float(g["rating"]) / 5), 2)
+            except ValueError:
+                pass
+        src_order = list(order)
+        if installed_from.get(pkg) == "f-droid" and "fdroid" in src_order and "googleplay" in src_order:
+            src_order.remove("fdroid"); src_order.insert(src_order.index("googleplay"), "fdroid")
+        found, used = [], []
+        for name in src_order:
+            if name == "launchbox":
+                d = lb
+            elif name == "screenscraper":
+                d = ss.lookup(pkg, title)
+            elif name == "googleplay":
+                d = ms.google_play(pkg)
+            elif name == "fdroid":
+                d = ms.fdroid(pkg)
+            else:
+                continue
+            if d:
+                found.append((name, d)); used.append(name)
+        meta = ms.merge(*(d for _, d in found))
+
+        # cover: a real box (LaunchBox, ScreenScraper) beats a store icon
         cover = os.path.join(IMG_DIR, title + "-front.png")
         art = None
-        if g and best_image(g):
-            ext = os.path.splitext(best_image(g))[1] or ".png"
-            raw = os.path.join(CACHE, "cover-" + gid + ext)
-            if os.path.exists(raw) or fetch_cover(best_image(g), raw):
-                art = raw
+        for name, d in found:
+            if name == "launchbox" and best_image(g):
+                ext = os.path.splitext(best_image(g))[1] or ".png"
+                raw = os.path.join(CACHE, "cover-" + gid + ext)
+                art = raw if os.path.exists(raw) or fetch_cover(best_image(g), raw) else None
+            elif d.get("cover"):
+                art = cached_image(d["cover"], f"{name}-{pkg}-cover")
+            if art:
+                break
         art = art or waydroid_icon(pkg) or title_card(title, os.path.join(CACHE, "card.png"))
-        Image.open(art).convert("RGB").save(cover)
+        save_as(art, cover)
         box = os.path.join(IMG_DIR, title + "-box3d.png")
         badge = badge_of(pkg)
-        render(Image.open(cover), (g or {}).get("name") or title, 640, badge).save(box, optimize=True)
+        render(Image.open(cover), meta.get("name") or title, 640, badge).save(box, optimize=True)
         drawn[pkg] = badge
 
         game = by_path.get(path)
         if game is None:
             game = ET.SubElement(root, "game"); set_field(game, "path", path); by_path[path] = game
-        set_field(game, "name", (g or {}).get("name") or title)
+        set_field(game, "name", meta.get("name") or title)
         for tag in ("image", "thumbnail", "boxart"):
             set_field(game, tag, "./images/" + os.path.basename(box))
-        if g:
-            set_field(game, "desc", html.unescape(g["overview"]))
-            set_field(game, "developer", g["dev"]); set_field(game, "publisher", g["pub"])
-            set_field(game, "releasedate", es_date(g["date"]))
-            set_field(game, "genre", g["genre"].split(";")[0].strip())
-            try:
-                set_field(game, "rating", f"{min(1.0, float(g['rating']) / 5):.2f}")
-            except ValueError:
-                pass
+        for key, tag, suffix, mode in (("fanart", "fanart", "-fanart.jpg", "RGB"),
+                                       ("wheel", "marquee", "-marquee.png", "RGBA")):
+            raw = cached_image(meta.get(key), f"{pkg}-{key}")
+            if raw:
+                set_field(game, tag, "./images/" + os.path.basename(save_as(raw, os.path.join(IMG_DIR, title + suffix), mode)))
+        set_field(game, "desc", meta.get("desc"))
+        set_field(game, "developer", meta.get("dev")); set_field(game, "publisher", meta.get("pub"))
+        set_field(game, "releasedate", es_date(meta.get("date", "")))
+        set_field(game, "genre", meta.get("genre"))
+        if "rating" in meta:
+            set_field(game, "rating", f"{meta['rating']:.2f}")
         matches[pkg] = gid or ""
-        log(f"{title}: {'LaunchBox #' + gid if gid else 'no match (app icon)'}, badge={badge or 'none'}")
+        log(f"{title}: {', '.join(used) or 'no match (app icon)'}, badge={badge or 'none'}")
 
     # drop gamelist entries whose .android file is gone (only ones we made boxes for)
     names = {e[0] for e in entries}
@@ -301,7 +382,7 @@ def main():
         p = (g.findtext("path") or "")[2:]
         if p.endswith(".android") and p not in names and "-box3d.png" in (g.findtext("image") or ""):
             root.remove(g)
-            for suffix in ("-box3d.png", "-front.png"):
+            for suffix in ("-box3d.png", "-front.png", "-fanart.jpg", "-marquee.png"):
                 try: os.remove(os.path.join(IMG_DIR, p[:-8] + suffix))
                 except OSError: pass
 

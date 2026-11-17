@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Print "<apk-url> [md5]" for an app store the F1 menu installs on first launch.
+"""Print "<apk-url> <md5|-> <versionCode>" for the newest build of an app store in the F1 menu.
 
     store-apk-url.py <package>
 
-  org.fdroid.fdroid  F-Droid       official stable link on f-droid.org
+  org.fdroid.fdroid  F-Droid       newest suggested build in the official F-Droid repository
   com.aurora.store   Aurora Store  newest build in the official F-Droid repository
   cm.aptoide.pt      Aptoide       Aptoide's own official store ("aptoide-web"), with md5 to verify
 """
@@ -18,16 +18,16 @@ def get_json(url):
 
 def fdroid(pkg):
     code = get_json(f"https://f-droid.org/api/v1/packages/{pkg}")["suggestedVersionCode"]
-    return f"https://f-droid.org/repo/{pkg}_{code}.apk"
+    return f"https://f-droid.org/repo/{pkg}_{code}.apk - {code}"
 
 
 def aptoide(pkg):
     f = get_json(f"https://ws75.aptoide.com/api/7/app/getMeta/package_name={pkg}/store_name=aptoide-web")["data"]["file"]
-    return f"{f['path']} {f['md5sum']}"
+    return f"{f['path']} {f['md5sum']} {f.get('vercode') or 0}"
 
 
 RESOLVERS = {
-    "org.fdroid.fdroid": lambda p: "https://f-droid.org/F-Droid.apk",
+    "org.fdroid.fdroid": fdroid,
     "com.aurora.store": fdroid,
     "cm.aptoide.pt": aptoide,
 }

@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.9** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.1.0** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -37,19 +37,28 @@ unzip it on the machine and run `bash install.sh`. It still updates itself if Gi
 | Entry | Does |
 |---|---|
 | Google Play Store (Android) | Opens Android with the Play Store |
-| APK Manager (Android) | Controller-driven menu: install `.apk` `.xapk` `.apks` `.apkm` files from `roms/android/apk`, reinstall stored Google Play apps, uninstall apps (labelled *[Google Play]* or *[APK]*), store Play apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
-| F-Droid (Android) | The free and open-source Android app store. It downloads and installs itself the first time you open it, and games you install from it appear in the ANDROID system like any other |
+| APK Manager (Android) | Controller-driven menu: install `.apk` `.xapk` `.apks` `.apkm` files from `roms/android/apk`, reinstall stored store apps, uninstall apps (each labelled with where it came from: *[Google Play]* *[F-Droid]* *[Aurora]* *[Aptoide]* *[APK]*), back up store apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
+| F-Droid (Android) | The free and open-source Android app store. It downloads and installs itself the first time you open it and keeps itself on the newest official build, and games you install from it appear in the ANDROID system like any other |
 | Aurora Store (Android) | The Google Play catalog without a Google account. It installs itself on first open, using the newest build from the official F-Droid repository |
 | Aptoide (Android) | A community Android app store. It installs itself on first open, from Aptoide's official store, and the download is checked against Aptoide's published MD5 checksum |
 | Waydroid (Android) | Opens Android's home screen and app drawer: Android Settings, files, any app. Handy when you need to get into Android itself |
 | Uninstall Android | Asks first. Choose **Cancel**, **Uninstall but keep apps + saves**, or **Uninstall everything** |
 
-**EmulationStation → ANDROID** lists only your installed games and apps, each one launching straight in.
-Entries are added and removed automatically when you leave Android.
+**EmulationStation → ANDROID** lists every app *you* installed (Android's own third-party app list, so nothing
+is hidden because of its package name, e.g. Google-made games show up too), each one launching straight in.
+The app stores themselves stay in F1. Entries are added and removed automatically when you leave Android.
 
-**Google Play installs are stored automatically.** Every time you leave Android, each app installed by
-Google Play is copied (base + split APKs) to `/userdata/roms/android/apk/google-play/<package>/`. APK Manager
-can reinstall them without the Play Store, even after a full uninstall/reinstall. Uninstalling never deletes this folder.
+**Store installs are backed up automatically.** Every time you leave Android, each app installed from a store
+is copied (base + split APKs) to `/userdata/roms/android/apk/<store>/<package>/`:
+
+| Installed from | Backup folder |
+|---|---|
+| Google Play | `apk/google-play/` |
+| F-Droid | `apk/f-droid/` |
+| Aurora Store | `apk/aurora/` |
+| Aptoide | `apk/aptoide/` |
+
+APK Manager can reinstall them without the store, even after a full uninstall/reinstall. Uninstalling never deletes these folders.
 
 **Exit Android:** hold **SELECT/Hotkey + START** for 1 second.
 
@@ -102,10 +111,13 @@ automatically stays on-demand.
 - **Update the add-on**: installs the newest release. Apps, saves, settings and boxes are kept.
 - **Update Android**: updates Waydroid and its helper packages, then downloads the newest Android (LineageOS) system
   image with `waydroid upgrade`. ARM translation and Play Store registration are kept.
-- **Update both**
+- **Update the app stores**: F-Droid, Aurora Store and Aptoide are compared with their newest official build
+  and updated right away (the menu shows which ones have an update).
+- **Update everything**
 
-Updates install in the background as soon as you leave APK Manager. Progress goes to `android.log`.
-Google Play keeps your games themselves up to date.
+Add-on and Android updates install in the background as soon as you leave APK Manager. Progress goes to `android.log`.
+The app stores also check for a newer build of themselves (at most once a day) whenever you open them from F1,
+and the stores keep your games up to date.
 
 From SSH:
 ```bash
@@ -126,14 +138,39 @@ Running the one-line `install.sh` again also updates the add-on.
 Switch it in **APK Manager → App mode**, or with `/userdata/system/services/android app-mode full|native`.
 The new mode applies the next time Android starts. Android restarts once to apply it.
 
-## 3D boxes + game info (LaunchBox Games Database)
+## 3D boxes + game info (LaunchBox, ScreenScraper, Google Play, F-Droid)
 Every game in ANDROID gets a CD-jewel-case 3D box:
 - the black **android** band across the top;
 - the Android bot and the game title on the spine;
-- the LaunchBox *Box - Front* cover on the front.
+- the best cover found on the front.
 
 The box takes the shape of the cover, so the whole image always fits.
-The description, developer, publisher, release date, genre and rating are filled in too.
+The description, developer, publisher, release date, genre and rating are filled in too, plus background art
+(`fanart`) and a wheel logo (`marquee`) when a source has them.
+
+**Sources.** Each field comes from the first source that has it:
+
+| # | Source | Gives |
+|---|---|---|
+| 1 | LaunchBox Games Database | real box covers + full game info |
+| 2 | ScreenScraper | box art, wheel logo, screenshot, game info (needs a developer ID, see below) |
+| 3 | Google Play listing | hi-res icon, feature graphic, description, developer, genre, rating |
+| 4 | F-Droid | icon, screenshot, description for open-source games (tried before Google Play for apps installed from F-Droid) |
+
+A real box cover (LaunchBox, ScreenScraper) always wins over a store icon. With no match anywhere the box uses
+the app's own icon. Lookups are cached for 30 days. Change the order or turn sources off in
+`/userdata/system/add-ons/android/settings/android.conf`:
+```
+SCRAPE_SOURCES=launchbox screenscraper googleplay fdroid
+```
+**ScreenScraper** only answers apps that have a developer ID (free, requested on the ScreenScraper forum).
+Add it to `android.conf`:
+```
+SCREENSCRAPER_DEVID=yourdevid
+SCREENSCRAPER_DEVPASSWORD=yourdevpassword
+```
+Your normal ScreenScraper login is read from Batocera's scraper settings automatically (or set
+`SCREENSCRAPER_USER=` / `SCREENSCRAPER_PASSWORD=`). Without a developer ID ScreenScraper is simply skipped.
 
 * The LaunchBox database (`Metadata.zip`, published daily) is downloaded once and reduced to the Android games.
   It's refreshed every 30 days.
@@ -142,10 +179,11 @@ The description, developer, publisher, release date, genre and rating are filled
   (gamepad feature, Android TV support, or no touchscreen required → controller).
   Wrong badge? Put `package.name=controller` (or `touch` / `none`) in
   `/userdata/system/add-ons/android/settings/controller-overrides.conf`. The box is redrawn the next time you leave Android.
-* Games are matched by name, including LaunchBox alternate names. When there is no match, the box uses the app's own icon.
+* LaunchBox and ScreenScraper match by name (LaunchBox alternate names too); Google Play and F-Droid by the exact package name.
 * Wrong match? Put `package.name=LaunchBoxDatabaseID` in
   `/userdata/system/add-ons/android/settings/launchbox-overrides.conf`, then run **APK Manager → Rebuild 3D boxes**.
-* Files: `roms/android/images/<Game>-box3d.png` (used as image, thumbnail and boxart) and `<Game>-front.png`.
+* Files: `roms/android/images/<Game>-box3d.png` (used as image, thumbnail and boxart), `<Game>-front.png`,
+  `<Game>-fanart.jpg`, `<Game>-marquee.png`.
 * Rebuild everything over SSH: `bash /userdata/system/add-ons/android/install.sh --rescrape`.
 
 ## Layout (service script + symlinks)

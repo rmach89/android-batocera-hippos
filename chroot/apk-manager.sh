@@ -6,23 +6,23 @@
 #   * store copies of everything Google Play installed
 APK_DIR=/mnt/android-roms/apk
 DONE_DIR=$APK_DIR/installed
-PLAY_DIR=$APK_DIR/google-play
+STORE_DIRS="google-play f-droid aurora aptoide"   # roms/android/apk/<store>/<package>/
 CACHE=/mnt/android-roms/.cache/applist.txt
 ADATA=/root/.local/share/waydroid/data
 WS=/opt/waydroid_script
 export DIALOGRC=/opt/android/dialogrc
-mkdir -p "$APK_DIR" "$DONE_DIR" "$PLAY_DIR"
+mkdir -p "$APK_DIR" "$DONE_DIR"
 T="APK Manager  v$(cat /opt/android/VERSION 2>/dev/null || echo '?')"
 
 msg()  { dialog --backtitle "$T" --msgbox "$1" 16 72; }
 busy() { echo "$1" | dialog --backtitle "$T" --progressbox 6 72; }
-refresh_cache() { sleep 2; waydroid app list > "$CACHE" 2>/dev/null; }
+refresh_cache() { sleep 2; waydroid app list > "$CACHE" 2>/dev/null; /opt/android/installed-apps.sh --cache >/dev/null 2>&1; }
 
-is_system() { [[ "$1" =~ ^(android|com\.android\.|com\.google\.|org\.lineageos\.|id\.waydro\.|org\.chromium\.) ]]; }
+store_label() { case "$1" in google-play) echo "Google Play";; f-droid) echo "F-Droid";; aurora) echo "Aurora";; aptoide) echo "Aptoide";; *) echo "$1";; esac; }
 
 installed_pkgs() { waydroid shell -- pm list packages -3 2>/dev/null | tr -d '\r' | sed 's/^package://'; }
 
-# install a stored Play app (base + split APKs) -------------------------------
+# install a stored store app (base + split APKs) ------------------------------
 install_bundle() {   # install_bundle <dir>
     local dir="$1" n
     n=$(ls "$dir"/*.apk 2>/dev/null | wc -l)
@@ -50,13 +50,17 @@ install_menu() {
         esac
         items+=("apk:$f" "$kind" on)
     done < <(find "$APK_DIR" -maxdepth 1 -type f \( -iname '*.apk' -o -iname '*.xapk' -o -iname '*.apks' -o -iname '*.apkm' \) -printf '%f\n' | sort)
-    for d in "$PLAY_DIR"/*/; do
-        [ -d "$d" ] || continue
-        f=$(basename "$d"); [[ "$inst" == *" $f "* ]] && continue      # already installed
-        name=$(cat "$d/.name" 2>/dev/null); items+=("play:$f" "Google Play: ${name:-$f}" off)
+    local sd
+    for sd in $STORE_DIRS; do
+        for d in "$APK_DIR/$sd"/*/; do
+            [ -d "$d" ] || continue
+            f=$(basename "$d"); [[ "$inst" == *" $f "* ]] && continue      # already installed
+            name=$(cat "$d/.name" 2>/dev/null)
+            items+=("store:$sd/$f" "$(store_label "$sd"): ${name:-$f}" off)
+        done
     done
     if [ ${#items[@]} -eq 0 ]; then
-        msg "Nothing to install.\n\nCopy .apk / .xapk / .apks / .apkm files to the network share:\n  share / roms / android / apk\n  (/userdata/roms/android/apk)\n\nStored Google Play apps that are already installed are hidden."
+        msg "Nothing to install.\n\nCopy .apk / .xapk / .apks / .apkm files to the network share:\n  share / roms / android / apk\n  (/userdata/roms/android/apk)\n\nSaved store apps that are already installed are hidden."
         return
     fi
     local pick
@@ -72,9 +76,9 @@ install_menu() {
                         mv -f "$APK_DIR/$f" "$DONE_DIR/"; ok=$((ok+1))
                     else fail=$((fail+1)); fi
                     out+="$r\n" ;;
-            play:*) f="${it#play:}"; busy "Reinstalling $f ..."
-                    if install_bundle "$PLAY_DIR/$f"; then ok=$((ok+1)); out+="OK    $f\n"
-                    else fail=$((fail+1)); out+="FAIL  $f\n"; fi ;;
+            store:*) f="${it#store:}"; busy "Reinstalling ${f#*/} ..."
+                    if install_bundle "$APK_DIR/$f"; then ok=$((ok+1)); out+="OK    ${f#*/}\n"
+                    else fail=$((fail+1)); out+="FAIL  ${f#*/}\n"; fi ;;
         esac
     done <<< "$pick"
     refresh_cache
@@ -82,28 +86,25 @@ install_menu() {
 }
 
 uninstall_menu() {
-    local play items=() p n src
-    play=" $(/opt/android/store-play-apps.sh --list | tr '\n' ' ') "
-    while IFS=$'\t' read -r p n; do
-        is_system "$p" && continue
-        [[ "$play" == *" $p "* ]] && src="Google Play" || src="APK"
-        items+=("$p" "[$src] $n" off)
-    done < <(waydroid app list 2>/dev/null | awk -F': ' '/^Name:/{n=$2} /^packageName:/{gsub(/[ \t]/,"",$2); print $2 "\t" n}')
+    local items=() p sid label n
+    while IFS=$'\t' read -r p sid label n; do
+        items+=("$p" "[$label] $n" off)
+    done < <(/opt/android/installed-apps.sh | sort -t$'\t' -k4,4f)
     [ ${#items[@]} -eq 0 ] && { msg "No installed apps found."; return; }
     local pick
     pick=$(dialog --backtitle "$T" --separate-output --checklist \
         "Select apps to REMOVE   X = toggle   A = confirm" 20 76 12 "${items[@]}" 3>&1 1>&2 2>&3) || return
     [ -z "$pick" ] && return
-    dialog --backtitle "$T" --yesno "Uninstall these apps and their save data?\n\n$pick\n\n(Stored Google Play copies are kept so you can reinstall.)" 18 72 || return
+    dialog --backtitle "$T" --yesno "Uninstall these apps and their save data?\n\n$pick\n\n(Saved copies of store apps are kept so you can reinstall.)" 18 72 || return
     while IFS= read -r p; do [ -n "$p" ] && { busy "Removing $p ..."; waydroid app remove "$p" >/dev/null 2>&1; }; done <<< "$pick"
     refresh_cache
     msg "Removed. Their entries disappear from the ANDROID system when you exit."
 }
 
 store_menu() {
-    busy "Saving copies of Google Play apps ..."
-    local r; r=$(/opt/android/store-play-apps.sh 2>&1 | tail -n1)
-    msg "$r\n\nLocation: roms/android/apk/google-play/\nThis also happens automatically every time you leave Android."
+    busy "Saving copies of apps from Google Play, F-Droid, Aurora and Aptoide ..."
+    local r; r=$(/opt/android/store-installed-apps.sh 2>&1 | tail -n1)
+    msg "$r\n\nLocation: roms/android/apk/<store>/\n  google-play  f-droid  aurora  aptoide\nThis also happens automatically every time you leave Android."
 }
 
 CONF=/etc/android-addon/android.conf
@@ -150,25 +151,37 @@ MYVER="v$(cat /opt/android/VERSION 2>/dev/null || echo 0.0.0)"
 ver_num() { local v="${1#v}"; IFS=. read -r a b c <<< "$v"; echo $(( ${a:-0}*100 + ${b:-0}*10 + ${c:-0} )); }
 
 updates_menu() {
-    busy "Checking GitHub for the newest version ..."
-    local tag notes
+    busy "Checking GitHub and the app stores for updates ..."
+    local tag notes stores
     tag=$(python3 /opt/android/latest-version.py 2>/dev/null | cut -d' ' -f1)
     if [ -z "$tag" ]; then notes="Could not reach GitHub (offline?)"
     elif [ "$(ver_num "$tag")" -gt "$(ver_num "$MYVER")" ]; then notes="UPDATE AVAILABLE: $tag"
     else notes="Add-on is up to date"; fi
+    stores=$(/opt/android/update-stores.sh check 2>/dev/null | cut -f2 | paste -sd, - | sed 's/,/, /g')
+    local snote="App stores are up to date"
+    [ -n "$stores" ] && snote="Store updates: $stores"
     local c
-    c=$(dialog --backtitle "$T" --menu "Installed: $MYVER     Newest: ${tag:-?}\n$notes\n\nUpdates run in the background after you leave Android.\nAndroid is unavailable for a few minutes while they install." 17 72 4 \
+    c=$(dialog --backtitle "$T" --menu "Installed: $MYVER     Newest: ${tag:-?}\n$notes\n$snote\n\nAdd-on/Android updates run after you leave Android\n(Android is unavailable for a few minutes). Store updates install now." 19 72 5 \
         1 "Update the add-on to the newest version" \
         2 "Update Android (Waydroid + Android system image)" \
-        3 "Update both" \
-        4 "Back" 3>&1 1>&2 2>&3) || return
+        3 "Update the app stores (F-Droid, Aurora, Aptoide)" \
+        4 "Update everything" \
+        5 "Back" 3>&1 1>&2 2>&3) || return
     case "$c" in
         1) echo addon > "$QUEUE" ;;
         2) echo android > "$QUEUE" ;;
-        3) echo "android addon" > "$QUEUE" ;;
+        3) update_stores_now; return ;;
+        4) update_stores_now; echo "android addon" > "$QUEUE" ;;
         *) return ;;
     esac
     msg "Queued. The update starts as soon as you leave APK Manager.\n\nProgress: /userdata/system/logs/android.log\nYour apps, saves and settings are kept."
+}
+
+update_stores_now() {
+    /opt/android/update-stores.sh update 2>&1 | tee /tmp/stores.txt | \
+        dialog --backtitle "$T" --progressbox "Updating app stores ..." 12 70
+    [ -s /tmp/stores.txt ] || echo "All installed app stores are already up to date." > /tmp/stores.txt
+    dialog --backtitle "$T" --title "App stores" --textbox /tmp/stores.txt 12 70
 }
 
 controllers_menu() {
@@ -192,7 +205,7 @@ controllers_menu() {
 }
 
 rebuild_boxes() {
-    dialog --backtitle "$T" --yesno "Rebuild every 3D box and game info from the\nLaunchBox Games Database?\n\n(Downloads the latest database first - a few minutes.)" 10 60 || return
+    dialog --backtitle "$T" --yesno "Rebuild every 3D box and game info?\n\nSources: LaunchBox, ScreenScraper, Google Play, F-Droid\n(Downloads the latest LaunchBox database first - a few minutes.)" 11 66 || return
     python3 /opt/android/scrape-launchbox.py --force --refresh 2>&1 | tail -n 15 | \
         dialog --backtitle "$T" --progressbox "Building boxes..." 20 76
     msg "Done. EmulationStation shows the new boxes when you exit.\n\nWrong match? Add a line  package=LaunchBoxID  to\n/userdata/system/add-ons/android/settings/launchbox-overrides.conf"
@@ -213,14 +226,14 @@ while true; do
     always_on && AO="ON " || AO="OFF"
     multi_window && AM="Native windows" || AM="Full Android"
     c=$(dialog --backtitle "$T" --no-cancel --menu "D-pad = move   A = select   Select+Start = exit" 23 72 12 \
-        1 "Install apps  (APK, XAPK, APKS, APKM + stored Play apps)" \
+        1 "Install apps  (APK, XAPK, APKS, APKM + saved store apps)" \
         2 "Uninstall apps" \
-        3 "Store Google Play apps now" \
+        3 "Save copies of store apps now" \
         4 "Google Play: register this device ('not certified' fix)" \
         5 "Refresh ANDROID game list" \
         6 "Always-on (keep Android booted): $AO" \
         7 "App mode: $AM" \
-        8 "Rebuild 3D boxes + game info (LaunchBox)" \
+        8 "Rebuild 3D boxes + game info (all sources)" \
         9 "Controllers: test, log, what Android sees" \
         10 "Updates: add-on + Android" \
         11 "Exit" 3>&1 1>&2 2>&3) || c=11

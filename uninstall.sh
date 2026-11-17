@@ -33,7 +33,7 @@ for f in "$ROMS_DIR"/*.android; do
     [ -e "$f" ] && head -n1 "$f" | grep -qx '# managed-by-android-addon' && rm -f "$f"
 done
 rm -rf "$ROMS_DIR/.cache"
-rm -f "$ROMS_DIR"/images/*-box3d.png "$ROMS_DIR"/images/*-front.png
+rm -f "$ROMS_DIR"/images/*-box3d.png "$ROMS_DIR"/images/*-front.png "$ROMS_DIR"/images/*-fanart.jpg "$ROMS_DIR"/images/*-marquee.png
 
 if [ "$1" = "--keep-data" ]; then
     echo "Kept $ROOTFS - run install.sh again to restore Android with your apps."
