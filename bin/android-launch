@@ -3,6 +3,7 @@
 #   android-launch /userdata/roms/android/<Game>.android   ES game entry (file holds the package name)
 #   android-launch --app <package>                         F1 menu: e.g. Google Play Store
 #   android-launch --manager                               F1 menu: APK Manager
+#   android-launch --desktop                               F1 menu: Waydroid (Android home screen)
 #   android-launch --stop                                  leave Android (like Select+Start)
 
 SELF="$(readlink -f "$0")"
@@ -14,6 +15,7 @@ case "$1" in
     --stop)    # same as Select+Start: always-on hides Android, on-demand shuts it down
                mkdir -p "$STATE"; touch "$STATE/quit"; exit 0 ;;
     --manager) MODE=manager; TARGET="" ;;
+    --desktop) MODE=app; TARGET="com.android.launcher3" ;;   # Android home screen + app drawer
     --app)     MODE=app; TARGET="$2" ;;
     *)
         [ -f "$1" ] || { log "launch: no such file $1"; exit 1; }

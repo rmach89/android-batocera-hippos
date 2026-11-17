@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.2** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.3** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -23,11 +23,12 @@ translation, creates every symlink, then enables and starts the service. Nothing
 After an OS update, if the ANDROID system, the F1 entries or the service are gone, run `bash /userdata/system/add-ons/android/install.sh --repair`.
 
 ## What you get
-**F1 → Applications menu**
+**F1 → Applications menu** (four entries)
 | Entry | Does |
 |---|---|
 | Google Play Store (Android) | Opens Android with the Play Store |
 | APK Manager (Android) | Controller-driven menu: install `.apk` files from `roms/android/apk`, reinstall stored Google Play apps, uninstall apps (labelled *[Google Play]* or *[APK]*), store Play apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
+| Waydroid (Android) | Opens Android's home screen and app drawer: Android Settings, files, any app. Handy when you need to get into Android itself |
 | Uninstall Android | Asks first. Choose **Cancel**, **Uninstall but keep apps + saves**, or **Uninstall everything** |
 
 **EmulationStation → ANDROID** lists only your installed games and apps, each one launching straight in.

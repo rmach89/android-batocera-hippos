@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Waydroid (Android)
+Comment=Open Android's home screen: Settings, app drawer, everything
+Exec=/userdata/system/add-ons/android/bin/android-launch --desktop
+Icon=/userdata/system/add-ons/android/config/icons/android-waydroid.png
+Terminal=false
+Categories=Game;batocera.linux;
