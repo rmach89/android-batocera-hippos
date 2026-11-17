@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=F-Droid (Android)
+Comment=Free and open-source Android app store (installs itself on first launch)
+Exec=/userdata/system/add-ons/android/bin/android-launch --fdroid
+Icon=/userdata/system/add-ons/android/config/icons/android-fdroid.png
+Terminal=false
+Categories=Game;batocera.linux;

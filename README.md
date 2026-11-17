@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.6** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.7** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -33,11 +33,12 @@ Prefer a download? Get the zip (**Code → Download ZIP** or from [Releases](htt
 unzip it on the machine and run `bash install.sh`. It still updates itself if GitHub has something newer.
 
 ## What you get
-**F1 → Applications menu** (four entries)
+**F1 → Applications menu** (five entries)
 | Entry | Does |
 |---|---|
 | Google Play Store (Android) | Opens Android with the Play Store |
 | APK Manager (Android) | Controller-driven menu: install `.apk` `.xapk` `.apks` `.apkm` files from `roms/android/apk`, reinstall stored Google Play apps, uninstall apps (labelled *[Google Play]* or *[APK]*), store Play apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
+| F-Droid (Android) | The free and open-source Android app store. It downloads and installs itself the first time you open it, and games you install from it appear in the ANDROID system like any other |
 | Waydroid (Android) | Opens Android's home screen and app drawer: Android Settings, files, any app. Handy when you need to get into Android itself |
 | Uninstall Android | Asks first. Choose **Cancel**, **Uninstall but keep apps + saves**, or **Uninstall everything** |
 

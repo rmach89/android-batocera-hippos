@@ -40,6 +40,20 @@ run_manager() {
     "${TERM_UI[@]}" /opt/android/apk-manager.sh
     kill $kp 2>/dev/null
 }
+# App stores that install themselves the first time they are opened from the F1 menu
+declare -A STORE_APK=( [org.fdroid.fdroid]="https://f-droid.org/F-Droid.apk" )
+ensure_app() {      # ensure_app <package>
+    local pkg="$1" url="${STORE_APK[$1]}" apk
+    [ -n "$url" ] || return 0
+    waydroid shell -- pm list packages 2>/dev/null | tr -d '\r' | grep -qx "package:$pkg" && return 0
+    apk="/var/cache/android-addon/$pkg.apk"; mkdir -p "$(dirname "$apk")"
+    if [ ! -s "$apk" ]; then
+        curl -fsSL -m 300 -o "$apk.part" "$url" && mv -f "$apk.part" "$apk"
+    fi
+    [ -s "$apk" ] && waydroid app install "$apk" >/dev/null 2>&1
+    sleep 3
+}
+
 leave_android() {   # back to ES: save state, refresh lists
     waydroid shell -- input keyevent KEYCODE_HOME >/dev/null 2>&1   # pauses the game
     cache_apps
@@ -89,6 +103,7 @@ if [ "$MODE" = persistent ]; then
             if [ "$what" = manager ]; then
                 run_manager; touch "$ST/quit"
             else
+                ensure_app "$pkg"
                 waydroid app launch "$pkg"
             fi
         fi
@@ -115,6 +130,7 @@ if [ "$MODE" = manager ]; then
 fi
 cache_apps
 sleep 2
+ensure_app "$TARGET"
 waydroid app launch "$TARGET"
 i=0
 while [ ! -f "$ST/quit" ] && running; do

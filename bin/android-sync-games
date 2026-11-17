@@ -22,6 +22,7 @@ is_system_pkg() {
     case "$1" in
         android|android.*|com.android.*|com.google.android.*|com.google.*|org.lineageos.*|\
         id.waydro.*|org.chromium.*|com.qualcomm.*|org.codeaurora.*|com.waydroid.*) return 0 ;;
+        org.fdroid.fdroid|org.fdroid.basic) return 0 ;;          # F-Droid lives in the F1 menu
     esac
     return 1
 }
