@@ -40,15 +40,23 @@ install_bundle() {   # install_bundle <dir>
 install_menu() {
     local items=() f d name inst
     inst=" $(installed_pkgs | tr '\n' ' ') "
-    while IFS= read -r f; do items+=("apk:$f" "APK file" on); done \
-        < <(find "$APK_DIR" -maxdepth 1 -type f -iname '*.apk' -printf '%f\n' | sort)
+    local kind
+    while IFS= read -r f; do
+        case "${f##*.}" in
+            [aA][pP][kK])         kind="APK" ;;
+            [xX][aA][pP][kK])     kind="XAPK bundle (APKPure)" ;;
+            [aA][pP][kK][sS])     kind="APKS split set" ;;
+            [aA][pP][kK][mM])     kind="APKM bundle (APKMirror)" ;;
+        esac
+        items+=("apk:$f" "$kind" on)
+    done < <(find "$APK_DIR" -maxdepth 1 -type f \( -iname '*.apk' -o -iname '*.xapk' -o -iname '*.apks' -o -iname '*.apkm' \) -printf '%f\n' | sort)
     for d in "$PLAY_DIR"/*/; do
         [ -d "$d" ] || continue
         f=$(basename "$d"); [[ "$inst" == *" $f "* ]] && continue      # already installed
         name=$(cat "$d/.name" 2>/dev/null); items+=("play:$f" "Google Play: ${name:-$f}" off)
     done
     if [ ${#items[@]} -eq 0 ]; then
-        msg "Nothing to install.\n\nCopy .apk files to the network share:\n  share / roms / android / apk\n  (/userdata/roms/android/apk)\n\nStored Google Play apps that are already installed are hidden."
+        msg "Nothing to install.\n\nCopy .apk / .xapk / .apks / .apkm files to the network share:\n  share / roms / android / apk\n  (/userdata/roms/android/apk)\n\nStored Google Play apps that are already installed are hidden."
         return
     fi
     local pick
@@ -59,9 +67,11 @@ install_menu() {
         [ -n "$it" ] || continue
         case "$it" in
             apk:*)  f="${it#apk:}"; busy "Installing $f ..."
-                    if waydroid app install "$APK_DIR/$f" >/dev/null 2>&1; then
-                        mv -f "$APK_DIR/$f" "$DONE_DIR/"; ok=$((ok+1)); out+="OK    $f\n"
-                    else fail=$((fail+1)); out+="FAIL  $f\n"; fi ;;
+                    local r; r=$(/opt/android/install-package.sh "$APK_DIR/$f")
+                    if [ "${r:0:2}" = OK ]; then
+                        mv -f "$APK_DIR/$f" "$DONE_DIR/"; ok=$((ok+1))
+                    else fail=$((fail+1)); fi
+                    out+="$r\n" ;;
             play:*) f="${it#play:}"; busy "Reinstalling $f ..."
                     if install_bundle "$PLAY_DIR/$f"; then ok=$((ok+1)); out+="OK    $f\n"
                     else fail=$((fail+1)); out+="FAIL  $f\n"; fi ;;
@@ -203,7 +213,7 @@ while true; do
     always_on && AO="ON " || AO="OFF"
     multi_window && AM="Native windows" || AM="Full Android"
     c=$(dialog --backtitle "$T" --no-cancel --menu "D-pad = move   A = select   Select+Start = exit" 23 72 12 \
-        1 "Install apps  (APK files + stored Google Play apps)" \
+        1 "Install apps  (APK, XAPK, APKS, APKM + stored Play apps)" \
         2 "Uninstall apps" \
         3 "Store Google Play apps now" \
         4 "Google Play: register this device ('not certified' fix)" \

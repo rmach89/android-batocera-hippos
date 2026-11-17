@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.3** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.4** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -27,7 +27,7 @@ After an OS update, if the ANDROID system, the F1 entries or the service are gon
 | Entry | Does |
 |---|---|
 | Google Play Store (Android) | Opens Android with the Play Store |
-| APK Manager (Android) | Controller-driven menu: install `.apk` files from `roms/android/apk`, reinstall stored Google Play apps, uninstall apps (labelled *[Google Play]* or *[APK]*), store Play apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
+| APK Manager (Android) | Controller-driven menu: install `.apk` `.xapk` `.apks` `.apkm` files from `roms/android/apk`, reinstall stored Google Play apps, uninstall apps (labelled *[Google Play]* or *[APK]*), store Play apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
 | Waydroid (Android) | Opens Android's home screen and app drawer: Android Settings, files, any app. Handy when you need to get into Android itself |
 | Uninstall Android | Asks first. Choose **Cancel**, **Uninstall but keep apps + saves**, or **Uninstall everything** |
 
@@ -39,6 +39,20 @@ Google Play is copied (base + split APKs) to `/userdata/roms/android/apk/google-
 can reinstall them without the Play Store, even after a full uninstall/reinstall. Uninstalling never deletes this folder.
 
 **Exit Android:** hold **SELECT/Hotkey + START** for 1 second.
+
+## Supported package files
+Drop them in `/userdata/roms/android/apk` (network share: `roms/android/apk`), then **APK Manager → Install apps**.
+
+| File | From | Notes |
+|---|---|---|
+| `.apk` | anywhere | single APK |
+| `.xapk` | APKPure | base + split APKs. **Game data (OBB) is copied automatically** to `Android/obb/<package>/` |
+| `.apks` | SAI, bundletool | split-APK set |
+| `.apkm` | APKMirror | only unencrypted ones. If the file is encrypted, unlock it with APKMirror Installer first |
+
+Split sets are installed whole first. If Android refuses them, the installer retries with just the base, the feature and
+language splits, one CPU split (x86_64 preferred, then arm64) and one screen-density split.
+Files that installed are moved to `apk/installed/`.
 
 ## Always-on (off by default)
 | | Off (default) | On |

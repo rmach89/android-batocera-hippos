@@ -153,32 +153,6 @@ container_running() { in_chroot waydroid status 2>/dev/null | grep -q "Container
 DESKTOP_SRC="$ADDON_DIR/config/applications"
 DESKTOP_DIRS="/userdata/system/.local/share/applications /usr/share/applications"
 
-# Waydroid's own icon (shipped by the waydroid package) on our dark tile, for the F1 entry.
-# Done once, inside the chroot (it has Pillow); falls back to the placeholder icon.
-make_waydroid_icon() {
-    local out="$ADDON_DIR/config/icons/android-waydroid.png" done="$ADDON_DIR/config/icons/.waydroid-icon-done"
-    [ -f "$done" ] && return 0
-    [ -x "$ROOTFS/usr/bin/python3" ] && is_mounted "$ROOTFS/proc" || return 0
-    in_chroot python3 - <<'PY' 2>/dev/null || return 0
-import glob, os
-from PIL import Image, ImageDraw
-cands = ["/usr/share/icons/hicolor/512x512/apps/waydroid.png", "/usr/lib/waydroid/data/AppIcon.png"] \
-        + sorted(glob.glob("/usr/share/icons/hicolor/*/apps/waydroid.png"), reverse=True)
-src = next((c for c in cands if os.path.exists(c)), None)
-if not src:
-    raise SystemExit(1)
-icon = Image.open(src).convert("RGBA")
-icon = icon.crop(icon.getbbox() or (0, 0, icon.width, icon.height))
-tile = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
-ImageDraw.Draw(tile).rounded_rectangle((8, 8, 248, 248), radius=48, fill=(32, 33, 36, 255))
-k = 170 / max(icon.size)
-icon = icon.resize((int(icon.width * k), int(icon.height * k)), Image.LANCZOS)
-tile.alpha_composite(icon, ((256 - icon.width) // 2, (256 - icon.height) // 2))
-tile.save("/tmp/android-waydroid-icon.png")
-PY
-    [ -s "$ROOTFS/tmp/android-waydroid-icon.png" ] && mv -f "$ROOTFS/tmp/android-waydroid-icon.png" "$out" && touch "$done"
-}
-
 install_desktop_links() {
     local d f
     for d in $DESKTOP_DIRS; do

@@ -28,7 +28,6 @@ start() {
         for _ in $(seq 1 30); do container_running && break; sleep 1; done
     fi
     container_running && log "service: container RUNNING" || { log "service: container failed to start"; exit 1; }
-    make_waydroid_icon             # F1 "Waydroid" entry gets Waydroid's real icon (once)
 
     # Always-on: boot Android now and keep it hidden in the background
     if always_on_wanted; then "$BIN/android-keeper" start; fi
