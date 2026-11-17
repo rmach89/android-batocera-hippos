@@ -142,8 +142,7 @@ ver_num() { local v="${1#v}"; IFS=. read -r a b c <<< "$v"; echo $(( ${a:-0}*100
 updates_menu() {
     busy "Checking GitHub for the newest version ..."
     local tag notes
-    tag=$(curl -fsSL -m 15 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null | \
-          python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])' 2>/dev/null)
+    tag=$(python3 /opt/android/latest-version.py 2>/dev/null | cut -d' ' -f1)
     if [ -z "$tag" ]; then notes="Could not reach GitHub (offline?)"
     elif [ "$(ver_num "$tag")" -gt "$(ver_num "$MYVER")" ]; then notes="UPDATE AVAILABLE: $tag"
     else notes="Add-on is up to date"; fi

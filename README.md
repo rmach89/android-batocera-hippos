@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.1** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.2** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -13,8 +13,10 @@ Over SSH (as root), one line installs the newest release:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rmach89/android-batocera-hippos/main/get.sh | bash
 ```
-Or download `android-addon-vX.X.X.zip` from [Releases](https://github.com/rmach89/android-batocera-hippos/releases),
+Or download the code (**Code → Download ZIP**, or a zip from [Releases](https://github.com/rmach89/android-batocera-hippos/releases)),
 copy it to the machine, unzip, then run `bash install.sh` (~2 GB download, 10–30 min).
+
+The updater uses the newest published GitHub release. If there isn't one, it uses the `VERSION` file on `main`.
 The installer checks your hardware, installs Waydroid, downloads Android 13 with Google Play, adds ARM
 translation, creates every symlink, then enables and starts the service. Nothing else to set up.
 

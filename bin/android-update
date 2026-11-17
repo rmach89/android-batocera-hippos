@@ -19,7 +19,6 @@ trap 'rm -f "$0"' EXIT
 need_root "$@"
 
 REPO="rmach89/android-batocera-hippos"
-API="https://api.github.com/repos/$REPO/releases/latest"
 QUEUE="$SETTINGS_DIR/update-queue"          # written by APK Manager (inside the chroot)
 
 say() { echo "==> $*"; log "update: $*"; }
@@ -28,15 +27,15 @@ ver_num() { local v="${1#v}"; IFS=. read -r a b c <<< "$v"; echo $(( ${a:-0}*100
 
 ensure_up() { "$BIN/android-service" start >/dev/null 2>&1 || { say "service not running"; exit 1; }; }
 
-latest_json() {   # fetched from inside the chroot (it always has curl + CA certs)
-    in_chroot curl -fsSL -m 20 -H "Accept: application/vnd.github+json" "$API"
+latest() {   # "<tag> <zip-url>" - release if published, else main branch (see latest-version.py)
+    in_chroot python3 /opt/android/latest-version.py
 }
 
 check() {
     ensure_up
-    local json tag
-    json="$(latest_json)" || { echo "Could not reach GitHub."; return 2; }
-    tag="$(echo "$json" | in_chroot python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])' 2>/dev/null)"
+    local tag url
+    read -r tag url < <(latest) || true
+    [ -n "$tag" ] || { echo "Could not reach GitHub."; return 2; }
     echo "installed: $ADDON_VERSION"
     echo "newest:    ${tag:-unknown}"
     [ -n "$tag" ] && [ "$(ver_num "$tag")" -gt "$(ver_num "$ADDON_VERSION")" ] && { echo "UPDATE AVAILABLE"; return 0; }
@@ -45,14 +44,9 @@ check() {
 
 update_addon() {
     ensure_up
-    local json url tag
-    json="$(latest_json)" || { say "could not reach GitHub"; return 1; }
-    read -r tag url < <(echo "$json" | in_chroot python3 -c '
-import json, sys
-r = json.load(sys.stdin)
-url = next((a["browser_download_url"] for a in r.get("assets", []) if a["name"].endswith(".zip")), r["zipball_url"])
-print(r["tag_name"], url)')
-    [ -n "$url" ] || { say "no release found"; return 1; }
+    local url tag
+    read -r tag url < <(latest) || true
+    [ -n "$url" ] || { say "could not reach GitHub"; return 1; }
     if [ "$(ver_num "$tag")" -le "$(ver_num "$ADDON_VERSION")" ]; then
         say "already up to date ($ADDON_VERSION)"; return 0
     fi
