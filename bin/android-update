@@ -1,0 +1,103 @@
+#!/bin/bash
+# Updates for the Android add-on.
+#   android-update check      show installed vs newest add-on version on GitHub
+#   android-update addon      install the newest add-on release (keeps apps, saves, settings)
+#   android-update android    update Waydroid + the Android (LineageOS) system image
+#   android-update all        both
+#   android-update pending    run whatever APK Manager queued (called after leaving Android)
+SELF="$(readlink -f "$0")"
+BIN="$(dirname "$SELF")"
+# An add-on update replaces this very file - run from a private copy so bash never reads
+# a half-overwritten script.
+if [ -z "$AU_REEXEC" ]; then
+    t="$(mktemp /tmp/android-update.XXXXXX)"; cp "$SELF" "$t"
+    AU_REEXEC=1 AU_BIN="$BIN" exec bash "$t" "$@"
+fi
+BIN="${AU_BIN:-$BIN}"
+trap 'rm -f "$0"' EXIT
+. "$BIN/android-common.sh"
+need_root "$@"
+
+REPO="rmach89/android-batocera-hippos"
+API="https://api.github.com/repos/$REPO/releases/latest"
+QUEUE="$SETTINGS_DIR/update-queue"          # written by APK Manager (inside the chroot)
+
+say() { echo "==> $*"; log "update: $*"; }
+
+ver_num() { local v="${1#v}"; IFS=. read -r a b c <<< "$v"; echo $(( ${a:-0}*100 + ${b:-0}*10 + ${c:-0} )); }
+
+ensure_up() { "$BIN/android-service" start >/dev/null 2>&1 || { say "service not running"; exit 1; }; }
+
+latest_json() {   # fetched from inside the chroot (it always has curl + CA certs)
+    in_chroot curl -fsSL -m 20 -H "Accept: application/vnd.github+json" "$API"
+}
+
+check() {
+    ensure_up
+    local json tag
+    json="$(latest_json)" || { echo "Could not reach GitHub."; return 2; }
+    tag="$(echo "$json" | in_chroot python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])' 2>/dev/null)"
+    echo "installed: $ADDON_VERSION"
+    echo "newest:    ${tag:-unknown}"
+    [ -n "$tag" ] && [ "$(ver_num "$tag")" -gt "$(ver_num "$ADDON_VERSION")" ] && { echo "UPDATE AVAILABLE"; return 0; }
+    echo "up to date"; return 1
+}
+
+update_addon() {
+    ensure_up
+    local json url tag
+    json="$(latest_json)" || { say "could not reach GitHub"; return 1; }
+    read -r tag url < <(echo "$json" | in_chroot python3 -c '
+import json, sys
+r = json.load(sys.stdin)
+url = next((a["browser_download_url"] for a in r.get("assets", []) if a["name"].endswith(".zip")), r["zipball_url"])
+print(r["tag_name"], url)')
+    [ -n "$url" ] || { say "no release found"; return 1; }
+    if [ "$(ver_num "$tag")" -le "$(ver_num "$ADDON_VERSION")" ]; then
+        say "already up to date ($ADDON_VERSION)"; return 0
+    fi
+    say "downloading $tag"
+    rm -rf "$ROOTFS/tmp/addon-update"; mkdir -p "$ROOTFS/tmp/addon-update"
+    in_chroot sh -c "curl -fsSL -m 300 -o /tmp/addon-update/addon.zip '$url' && \
+        cd /tmp/addon-update && python3 -m zipfile -e addon.zip ." || { say "download failed"; return 1; }
+    local src
+    src="$(dirname "$(find "$ROOTFS/tmp/addon-update" -maxdepth 3 -name install.sh | head -n1)")"
+    [ -f "$src/install.sh" ] || { say "release has no install.sh"; return 1; }
+    say "installing $tag"
+    "$ADDON_DIR/bin/android-keeper" stop 2>/dev/null
+    bash "$src/install.sh" --repair && say "add-on updated $ADDON_VERSION -> $tag"
+    rm -rf "$ROOTFS/tmp/addon-update"
+    "$ADDON_DIR/bin/android-service" restart >/dev/null 2>&1
+}
+
+update_android() {
+    ensure_up
+    say "stopping Android"
+    "$BIN/android-keeper" stop 2>/dev/null
+    in_chroot waydroid session stop >/dev/null 2>&1
+    say "updating Waydroid and the Debian helper system"
+    in_chroot sh -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get -y -qq \
+        -o Dpkg::Options::=--force-confold upgrade' >>"$LOG" 2>&1 || say "WARN: package update had errors (see log)"
+    say "downloading the newest Android system image (can be ~1 GB)"
+    in_chroot waydroid upgrade >>"$LOG" 2>&1 || say "WARN: waydroid upgrade reported an error (see log)"
+    say "restarting Android"
+    "$BIN/android-service" restart >/dev/null 2>&1
+    # ARM translation + Play certification live in Waydroid's overlay and survive image updates
+    say "Android updated: $(in_chroot sh -c 'waydroid --version 2>/dev/null' | head -n1)"
+}
+
+pending() {
+    [ -s "$QUEUE" ] || exit 0
+    local q; q="$(cat "$QUEUE")"; rm -f "$QUEUE"
+    case "$q" in *android*) update_android ;; esac
+    case "$q" in *addon*)   update_addon ;; esac
+}
+
+case "$1" in
+    check)   check ;;
+    addon)   update_addon ;;
+    android) update_android ;;
+    all)     update_android; update_addon ;;
+    pending) pending ;;
+    *) echo "Usage: $0 {check|addon|android|all}"; exit 1 ;;
+esac

@@ -1,0 +1,15 @@
+[Unit]
+Description=Android (Waydroid) add-on container
+After=local-fs.target network-online.target
+Wants=network-online.target
+RequiresMountsFor=/userdata
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/userdata/system/add-ons/android/bin/android-service start
+ExecStop=/userdata/system/add-ons/android/bin/android-service stop
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

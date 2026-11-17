@@ -1,0 +1,32 @@
+#!/bin/bash
+# F1 menu -> "Uninstall Android": gamepad-friendly confirmation, then runs uninstall.sh.
+SELF="$(readlink -f "$0")"
+BIN="$(dirname "$SELF")"
+. "$BIN/android-common.sh"
+need_root "$@"
+
+ANSWER="$ROOTFS/tmp/android-uninstall.answer"
+rm -f "$ANSWER"
+
+# ask using the same full-screen, controller-driven UI as APK Manager
+if [ -x "$ROOTFS/usr/bin/cage" ] && mount_chroot; then
+    attach_session_sockets
+    in_chroot dbus-run-session -- cage -s -d -- /opt/android/session.sh confirm-uninstall >>"$LOG" 2>&1
+    choice="$(cat "$ANSWER" 2>/dev/null)"
+elif command -v xterm >/dev/null 2>&1; then
+    # rootfs damaged: plain terminal fallback
+    xterm -fs 14 -e bash -c 'read -rp "Uninstall Android? [y/N/k=keep apps+saves] " a
+        case "$a" in y|Y) echo all;; k|K) echo data;; *) echo keep;; esac > /tmp/android-uninstall.answer'
+    choice="$(cat /tmp/android-uninstall.answer 2>/dev/null)"; rm -f /tmp/android-uninstall.answer
+else
+    choice=all
+fi
+
+case "$choice" in
+    all)  log "uninstall-menu: removing everything"
+          setsid bash "$ADDON_DIR/uninstall.sh" >>"$LOG" 2>&1 ;;
+    data) log "uninstall-menu: removing add-on, keeping apps + saves"
+          setsid bash "$ADDON_DIR/uninstall.sh" --keep-data >>"$LOG" 2>&1 ;;
+    *)    log "uninstall-menu: cancelled" ;;
+esac
+exit 0

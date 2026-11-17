@@ -1,0 +1,82 @@
+#!/bin/bash
+# Android launcher.
+#   android-launch /userdata/roms/android/<Game>.android   ES game entry (file holds the package name)
+#   android-launch --app <package>                         F1 menu: e.g. Google Play Store
+#   android-launch --manager                               F1 menu: APK Manager
+#   android-launch --stop                                  leave Android (like Select+Start)
+
+SELF="$(readlink -f "$0")"
+BIN="$(dirname "$SELF")"
+. "$BIN/android-common.sh"
+need_root "$@"
+
+case "$1" in
+    --stop)    # same as Select+Start: always-on hides Android, on-demand shuts it down
+               mkdir -p "$STATE"; touch "$STATE/quit"; exit 0 ;;
+    --manager) MODE=manager; TARGET="" ;;
+    --app)     MODE=app; TARGET="$2" ;;
+    *)
+        [ -f "$1" ] || { log "launch: no such file $1"; exit 1; }
+        MODE=app
+        TARGET="$(grep -v '^#' "$1" | grep -m1 -E '\S' | tr -d '[:space:]')"
+        ;;
+esac
+[ "$MODE" = manager ] || [ -n "$TARGET" ] || { log "launch: no package name given"; exit 1; }
+
+# make sure the background service is up (it may be disabled in the services menu)
+"$BIN/android-service" start >/dev/null 2>&1 || { log "launch: service failed"; exit 1; }
+
+# ---------- always-on: Android is already booted, just show it ----------
+if always_on_wanted && always_on_supported; then
+    "$BIN/android-keeper" start
+    for _ in $(seq 1 120); do keeper_ready && break; sleep 1; done   # first boot only
+fi
+if keeper_ready; then
+    log "launch (always-on): $MODE $TARGET"
+    rm -f "$STATE/hidden"
+    if [ "$MODE" = manager ]; then echo "manager" > "$STATE/cmd"; else echo "app $TARGET" > "$STATE/cmd"; fi
+    # wait until the player leaves Android (Select+Start) or the background session dies
+    while keeper_ready && [ ! -f "$STATE/hidden" ]; do sleep 0.5; done
+    rm -f "$STATE/hidden"
+    "$BIN/android-sync-games" >>"$LOG" 2>&1
+    reload_es
+    # updates queued in APK Manager -> install in the background now that Android is closed
+    if [ -s "$SETTINGS_DIR/update-queue" ]; then
+        setsid nohup "$BIN/android-update" pending >>"$LOG" 2>&1 < /dev/null &
+    fi
+
+    # if the background session ended (App mode changed in APK Manager), boot it again
+    if always_on_wanted && ! keeper_ready; then
+        for _ in $(seq 1 20); do
+            [ -f "$STATE/keeper.pid" ] && kill -0 "$(cat "$STATE/keeper.pid")" 2>/dev/null || break
+            sleep 1
+        done
+        "$BIN/android-keeper" start
+    fi
+    exit 0
+fi
+
+# ---------- on-demand ----------
+# only one Android window at a time
+if pgrep -f "/opt/android/session.sh" >/dev/null 2>&1; then
+    log "launch: Android is already open"; exit 0
+fi
+attach_session_sockets
+
+log "launch: $MODE $TARGET"
+# cage = single-window kiosk Wayland compositor. It nests inside the host X11/Wayland
+# session (Batocera / HippOS) or takes the screen directly via DRM if there is none.
+in_chroot dbus-run-session -- cage -s -d -- /opt/android/session.sh "$MODE" "$TARGET" >>"$LOG" 2>&1
+
+# pick up anything installed or removed (Play Store installs, APK manager) as ES games
+"$BIN/android-sync-games" >>"$LOG" 2>&1
+reload_es
+# updates queued in APK Manager -> install in the background now that Android is closed
+# (the update restarts the service itself, which also brings Always-on back)
+if [ -s "$SETTINGS_DIR/update-queue" ]; then
+    setsid nohup "$BIN/android-update" pending >>"$LOG" 2>&1 < /dev/null &
+else
+    # Always-on was just switched ON in APK Manager -> boot it in the background now
+    always_on_wanted && "$BIN/android-keeper" start
+fi
+exit 0

@@ -1,0 +1,45 @@
+#!/bin/bash
+# Always-on mode: boots Android once in a hidden window and keeps it running.
+#   android-keeper start   (called by android-service when ALWAYS_ON=1)
+#   android-keeper stop
+SELF="$(readlink -f "$0")"
+. "$(dirname "$SELF")/android-common.sh"
+need_root "$@"
+
+stop_keeper() {
+    if [ -f "$STATE/keeper.pid" ]; then
+        in_chroot waydroid session stop >/dev/null 2>&1
+        kill "$(cat "$STATE/keeper.pid")" 2>/dev/null
+        in_chroot pkill -x cage 2>/dev/null
+    fi
+    rm -f "$STATE"/{ready,keeper.pid,winid,visible,cmd,quit,hidden}
+}
+
+case "$1" in
+  stop) stop_keeper; exit 0 ;;
+  start) ;;
+  *) echo "Usage: $0 start|stop"; exit 1 ;;
+esac
+
+# already running (or still booting)?
+[ -f "$STATE/keeper.pid" ] && kill -0 "$(cat "$STATE/keeper.pid")" 2>/dev/null && exit 0
+mkdir -p "$STATE"
+(
+    echo $BASHPID > "$STATE/keeper.pid"
+    # at boot the X server may not be up yet
+    for _ in $(seq 1 300); do [ -S /tmp/.X11-unix/X0 ] && break; sleep 1; done
+    sleep 5
+    if ! always_on_supported; then
+        log "keeper: no plain X11 display - always-on not possible, using on-demand mode"
+        rm -f "$STATE/keeper.pid"; exit 0
+    fi
+    attach_session_sockets
+    log "keeper: booting Android in the background"
+    rm -f "$STATE"/{ready,winid,visible,cmd,quit,hidden}
+    in_chroot env WLR_BACKENDS=x11 dbus-run-session -- cage -s -d -- \
+        /opt/android/session.sh persistent >>"$LOG" 2>&1
+    log "keeper: Android background session ended"
+    rm -f "$STATE"/{ready,keeper.pid,winid,visible}
+) </dev/null >/dev/null 2>&1 &
+disown
+exit 0

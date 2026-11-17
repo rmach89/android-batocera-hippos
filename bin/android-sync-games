@@ -1,0 +1,61 @@
+#!/bin/bash
+# Turns installed Android apps into EmulationStation entries (/userdata/roms/android/*.android).
+# The app list is written by session.sh while Android is running (Waydroid can only list apps
+# with a live session), so this reads that cache.
+SELF="$(readlink -f "$0")"
+. "$(dirname "$SELF")/android-common.sh"
+
+CACHE="$ROMS_DIR/.cache/applist.txt"
+MARK="# managed-by-android-addon"
+mkdir -p "$ROMS_DIR" "$APK_DIR"
+
+write_entry() {  # write_entry "<Display Name>" "<package>"
+    printf '%s\n%s\n' "$MARK" "$2" > "$ROMS_DIR/$1.android"
+}
+# Play Store + APK manager live in the F1 Applications menu, not in the game list
+rm -f "$ROMS_DIR/Google Play Store.android" "$ROMS_DIR/APK Installer - Uninstaller.android"
+
+[ -s "$CACHE" ] || { echo "sync: no app list cached yet (start any Android entry once)"; exit 0; }
+
+# System / framework packages that should not show up as games
+is_system_pkg() {
+    case "$1" in
+        android|android.*|com.android.*|com.google.android.*|com.google.*|org.lineageos.*|\
+        id.waydro.*|org.chromium.*|com.qualcomm.*|org.codeaurora.*|com.waydroid.*) return 0 ;;
+    esac
+    return 1
+}
+
+declare -A KEEP
+name=""
+while IFS= read -r line; do
+    case "$line" in
+        Name:*)        name="${line#Name: }" ;;
+        packageName:*) pkg="${line#packageName: }"
+                       pkg="$(echo "$pkg" | tr -d '[:space:]')"
+                       if [ -n "$pkg" ] && ! is_system_pkg "$pkg"; then
+                           clean="$(echo "${name:-$pkg}" | tr -d '/\\:*?"<>|' | sed 's/^[ .]*//;s/[ .]*$//')"
+                           [ -z "$clean" ] && clean="$pkg"
+                           write_entry "$clean" "$pkg"
+                           KEEP["$clean.android"]=1
+                       fi
+                       name="" ;;
+    esac
+done < "$CACHE"
+
+# remove entries for apps that were uninstalled (only files this add-on created)
+for f in "$ROMS_DIR"/*.android; do
+    [ -e "$f" ] || continue
+    b="$(basename "$f")"
+    if head -n1 "$f" | grep -qx "$MARK" && [ -z "${KEEP[$b]}" ]; then
+        rm -f "$f"; echo "sync: removed $b"
+    fi
+done
+echo "sync: done (${#KEEP[@]} apps)"
+
+# 3D jewel-case boxes + metadata from the LaunchBox Games Database (in the background,
+# so returning to EmulationStation is never delayed). Skip with: --no-scrape
+if [ "$1" != "--no-scrape" ] && [ -x "$ROOTFS/usr/bin/python3" ] && is_mounted "$ROOTFS/proc"; then
+    ( in_chroot python3 /opt/android/scrape-launchbox.py ${FORCE_SCRAPE:+--force} >>"$LOG" 2>&1
+      reload_es ) </dev/null >/dev/null 2>&1 &
+fi

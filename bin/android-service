@@ -1,0 +1,81 @@
+#!/bin/bash
+# Android (Waydroid) background service.
+#   Batocera: symlinked to /userdata/system/services/android  -> toggled in
+#             MAIN MENU > SYSTEM SETTINGS > SERVICES, or `batocera-services enable android`
+#   HippOS / systemd: started by android-waydroid.service (linked with `systemctl link`)
+# Usage: android-service start|stop|restart|status|always-on [on|off]|app-mode [full|native]
+
+SELF="$(readlink -f "$0")"
+BIN="$(dirname "$SELF")"
+. "$BIN/android-common.sh"
+need_root "$@"
+
+start() {
+    log "service: starting ($ADDON_VERSION)"
+    install_desktop_links          # F1 menu entries (Batocera's /usr resets every boot)
+    setup_binder || exit 1
+    mount_chroot  || exit 1
+
+    # private system D-Bus inside the chroot (Waydroid's container <-> session IPC)
+    if ! in_chroot sh -c 'test -S /run/dbus/system_bus_socket && dbus-send --system --print-reply \
+            --dest=org.freedesktop.DBus / org.freedesktop.DBus.ListNames >/dev/null 2>&1'; then
+        rm -f "$ROOTFS/run/dbus/pid"
+        in_chroot dbus-daemon --system --fork >>"$LOG" 2>&1
+    fi
+
+    if ! container_running; then
+        in_chroot setsid nohup waydroid -w container start >>"$LOG" 2>&1 < /dev/null &
+        for _ in $(seq 1 30); do container_running && break; sleep 1; done
+    fi
+    container_running && log "service: container RUNNING" || { log "service: container failed to start"; exit 1; }
+
+    # Always-on: boot Android now and keep it hidden in the background
+    if always_on_wanted; then "$BIN/android-keeper" start; fi
+}
+
+stop() {
+    log "service: stopping"
+    "$BIN/android-keeper" stop 2>/dev/null
+    if [ -x "$ROOTFS/usr/bin/waydroid" ] && is_mounted "$ROOTFS/proc"; then
+        in_chroot waydroid session stop   >>"$LOG" 2>&1
+        in_chroot waydroid container stop >>"$LOG" 2>&1
+        in_chroot pkill -f "waydroid -w container start" 2>/dev/null
+        in_chroot sh -c 'kill $(cat /run/dbus/pid 2>/dev/null) 2>/dev/null'
+    fi
+    sleep 1
+    umount_chroot
+}
+
+status() {
+    if is_mounted "$ROOTFS/proc" && container_running; then
+        echo "android: running"; in_chroot waydroid status
+    else
+        echo "android: stopped"; return 1
+    fi
+}
+
+case "$1" in
+    start)   start ;;
+    stop)    stop ;;
+    restart) stop; start ;;
+    status)  echo "Android add-on $ADDON_VERSION"; status
+             echo "always-on: $(setting_get ALWAYS_ON 0 | sed 's/1/ON/;s/0/OFF/')$(keeper_ready && echo ' (Android booted)')"
+             echo "app mode:  $( [ "$(setting_get MULTI_WINDOW 1)" = 1 ] && echo 'Native windows' || echo 'Full Android')" ;;
+    version) echo "$ADDON_VERSION" ;;
+    always-on)
+        case "$2" in
+            on)  setting_set ALWAYS_ON 1
+                 always_on_supported || echo "Note: needs a plain X11 screen; on this display Android stays on-demand."
+                 is_mounted "$ROOTFS/proc" && "$BIN/android-keeper" start
+                 echo "Always-on: ON" ;;
+            off) setting_set ALWAYS_ON 0; "$BIN/android-keeper" stop; echo "Always-on: OFF" ;;
+            *)   echo "Always-on: $(setting_get ALWAYS_ON 0 | sed 's/1/ON/;s/0/OFF/')" ;;
+        esac ;;
+    app-mode)
+        case "$2" in
+            full)   setting_set MULTI_WINDOW 0; echo "App mode: Full Android (applies next time Android starts)" ;;
+            native) setting_set MULTI_WINDOW 1; echo "App mode: Native windows (applies next time Android starts)" ;;
+            *)      [ "$(setting_get MULTI_WINDOW 1)" = 1 ] && echo "App mode: Native windows" || echo "App mode: Full Android" ;;
+        esac ;;
+    *) echo "Usage: $0 {start|stop|restart|status|always-on [on|off]|app-mode [full|native]|version}"; exit 1 ;;
+esac

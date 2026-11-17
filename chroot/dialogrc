@@ -1,0 +1,11 @@
+use_shadow = OFF
+use_colors = ON
+screen_color = (WHITE,BLACK,ON)
+dialog_color = (WHITE,BLACK,OFF)
+title_color = (GREEN,BLACK,ON)
+border_color = (GREEN,BLACK,ON)
+button_active_color = (BLACK,GREEN,ON)
+button_inactive_color = (WHITE,BLACK,OFF)
+item_selected_color = (BLACK,GREEN,ON)
+tag_selected_color = (BLACK,GREEN,ON)
+check_selected_color = (BLACK,GREEN,ON)

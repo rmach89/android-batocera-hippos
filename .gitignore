@@ -1,0 +1,5 @@
+rootfs/
+__pycache__/
+*.pyc
+*.zip
+settings/

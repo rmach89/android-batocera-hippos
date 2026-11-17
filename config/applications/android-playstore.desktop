@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Google Play Store (Android)
+Comment=Install Android games from Google Play
+Exec=/userdata/system/add-ons/android/bin/android-launch --app com.android.vending
+Icon=/userdata/system/add-ons/android/config/icons/android-playstore.png
+Terminal=false
+Categories=Game;batocera.linux;

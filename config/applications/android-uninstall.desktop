@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Uninstall Android
+Comment=Remove the Android (Waydroid) add-on
+Exec=/userdata/system/add-ons/android/bin/android-uninstall-menu
+Icon=/userdata/system/add-ons/android/config/icons/android-uninstall.png
+Terminal=false
+Categories=Game;batocera.linux;
