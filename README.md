@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.4** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.5** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -8,19 +8,29 @@ Adds an **ANDROID** system to EmulationStation. Install games from the **Google 
 from **.apk files**, and each one appears in ES as its own game. Android runs in a
 Waydroid LXC container on the host kernel, using the real GPU. It is not emulated, so it runs close to native speed.
 
-## Install
-Over SSH (as root), one line installs the newest release:
+## Install / update
+Over SSH (as root on Batocera; HippOS asks for `sudo` by itself), this one line is all you need:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rmach89/android-batocera-hippos/main/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rmach89/android-batocera-hippos/main/install.sh | bash
 ```
-Or download the code (**Code → Download ZIP**, or a zip from [Releases](https://github.com/rmach89/android-batocera-hippos/releases)),
-copy it to the machine, unzip, then run `bash install.sh` (~2 GB download, 10–30 min).
+`install.sh` is self-contained. It always downloads the **newest version and every file it needs** from GitHub
+(a published release if there is one, otherwise `main`), then:
+- **New install:** checks your hardware, installs Waydroid, downloads Android 13 with Google Play, adds ARM
+  translation, creates every symlink, then enables and starts the service. It's about a 2 GB download and takes 10–30 min.
+- **Already installed:** updates the add-on in place, stopping Android while files are replaced. Your apps, saves,
+  settings and boxes are kept.
 
-The updater uses the newest published GitHub release. If there isn't one, it uses the `VERSION` file on `main`.
-The installer checks your hardware, installs Waydroid, downloads Android 13 with Google Play, adds ARM
-translation, creates every symlink, then enables and starts the service. Nothing else to set up.
+It works the same whether you pipe it as above, download `install.sh` on its own, or run it from an older copy.
+It needs only `bash`, `tar` and `curl` or `wget`.
 
-After an OS update, if the ANDROID system, the F1 entries or the service are gone, run `bash /userdata/system/add-ons/android/install.sh --repair`.
+| Option | Does |
+|---|---|
+| `install.sh --repair` | re-create symlinks, the service and packages (e.g. after an OS update) |
+| `install.sh --rescrape` | rebuild every 3D box and the game info |
+| `install.sh --local` | use the files next to the script; don't check GitHub (offline) |
+
+Prefer a download? Get the zip (**Code → Download ZIP** or from [Releases](https://github.com/rmach89/android-batocera-hippos/releases)),
+unzip it on the machine and run `bash install.sh`. It still updates itself if GitHub has something newer.
 
 ## What you get
 **F1 → Applications menu** (four entries)
@@ -84,7 +94,7 @@ From SSH:
 /userdata/system/add-ons/android/bin/android-update android   # Waydroid + Android image
 /userdata/system/add-ons/android/bin/android-update all
 ```
-Running the one-line `get.sh` install again also updates the add-on.
+Running the one-line `install.sh` again also updates the add-on.
 
 ## App mode: Native windows or Full Android
 | | Native windows (default, multi-window mode) | Full Android |

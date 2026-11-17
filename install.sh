@@ -1,11 +1,85 @@
 #!/bin/bash
 # Android (Waydroid + Google Play) add-on for Batocera and HippOS.
-#   ./install.sh            full install (downloads ~2 GB)
-#   ./install.sh --repair   re-create symlinks / service only (e.g. after an OS update)
+#
+# This one file is all you need - it fetches the newest version and every file it needs:
+#   curl -fsSL https://raw.githubusercontent.com/rmach89/android-batocera-hippos/main/install.sh | bash
+#
+#   install.sh             install, or update an existing install (apps/saves/settings kept)
+#   install.sh --repair    re-create symlinks / service / packages (e.g. after an OS update)
+#   install.sh --rescrape  rebuild every 3D box + game info
+#   install.sh --local     use the files next to this script, don't check GitHub
 set -o pipefail
-SRC="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+REPO="rmach89/android-batocera-hippos"
+
+# ------------------------------------------------------------------ bootstrap from GitHub
+# Runs before anything else, so it works when piped (curl | bash), when this file was
+# downloaded alone, or from an older copy: it downloads the newest release and re-runs
+# that release's install.sh. Needs only bash, tar, gzip and curl or wget.
+LOCAL=0; _args=()
+for _a in "$@"; do [ "$_a" = "--local" ] && LOCAL=1 || _args+=("$_a"); done
+set -- "${_args[@]}"
+
+_self="${BASH_SOURCE[0]:-$0}"
+SRC=""
+[ -f "$_self" ] && SRC="$(cd "$(dirname "$(readlink -f "$_self")")" && pwd)"
+
+_fetch() {      # _fetch URL  -> stdout
+    if command -v curl >/dev/null 2>&1; then curl -fsSL -m 30 "$1"
+    elif command -v wget >/dev/null 2>&1; then wget -qO- -T 30 "$1"
+    else return 1; fi
+}
+_fetch_file() { # _fetch_file URL FILE
+    if command -v curl >/dev/null 2>&1; then curl -fL --progress-bar -m 600 -o "$2" "$1"
+    else wget -q -T 60 -O "$2" "$1"; fi
+}
+_vnum() { local v="${1#v}" a b c; IFS=. read -r a b c <<< "$v"; echo $(( ${a:-0}*100 + ${b:-0}*10 + ${c:-0} )); }
+
+if [ -z "$ANDROID_ADDON_BOOTSTRAPPED" ] && [ "$LOCAL" = 0 ]; then
+    _have_local=0
+    [ -n "$SRC" ] && [ -f "$SRC/bin/android-common.sh" ] && _have_local=1
+    _local_ver="v$(cat "$SRC/VERSION" 2>/dev/null || echo 0.0.0)"
+
+    # newest version: a published release if there is one, else the main branch
+    _tag=""; _url=""
+    _json="$(_fetch "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null)"
+    _tag="$(echo "$_json" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    if [ -n "$_tag" ]; then
+        _url="https://github.com/$REPO/archive/refs/tags/$_tag.tar.gz"
+    else
+        _v="$(_fetch "https://raw.githubusercontent.com/$REPO/main/VERSION" 2>/dev/null | tr -dc '0-9.')"
+        [ -n "$_v" ] && { _tag="v$_v"; _url="https://github.com/$REPO/archive/refs/heads/main.tar.gz"; }
+    fi
+
+    if [ -n "$_url" ] && { [ "$_have_local" = 0 ] || [ "$(_vnum "$_tag")" -gt "$(_vnum "$_local_ver")" ]; }; then
+        echo -e "\e[1;32m==>\e[0m Downloading Android add-on $_tag from GitHub"
+        _tmp="$(mktemp -d /tmp/android-addon.XXXXXX)"
+        if _fetch_file "$_url" "$_tmp/addon.tar.gz" && tar -xzf "$_tmp/addon.tar.gz" -C "$_tmp"; then
+            _new="$(dirname "$(find "$_tmp" -maxdepth 3 -name install.sh | head -n1)")"
+            if [ -f "$_new/bin/android-common.sh" ]; then
+                export ANDROID_ADDON_BOOTSTRAPPED=1 ANDROID_ADDON_TMP="$_tmp"
+                if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+                    exec sudo -E bash "$_new/install.sh" "$@"
+                fi
+                exec bash "$_new/install.sh" "$@"
+            fi
+        fi
+        rm -rf "$_tmp"
+        echo "WARNING: could not download the add-on from GitHub." >&2
+    fi
+    if [ "$_have_local" = 0 ]; then
+        echo "ERROR: could not download the Android add-on from GitHub (https://github.com/$REPO)." >&2
+        echo "       Check the internet connection, or download the zip, unzip it and run install.sh from it." >&2
+        exit 1
+    fi
+fi
+# downloaded copy: remove it again when we're done
+[ -n "$ANDROID_ADDON_TMP" ] && case "$SRC" in "$ANDROID_ADDON_TMP"/*) trap 'rm -rf "$ANDROID_ADDON_TMP"' EXIT ;; esac
+
 . "$SRC/bin/android-common.sh"
-need_root "$@"
+if [ "$(id -u)" -ne 0 ]; then       # need_root, but re-run as a file (we may have been piped)
+    command -v sudo >/dev/null 2>&1 && exec sudo -E ANDROID_ADDON_BOOTSTRAPPED=1 bash "$SRC/install.sh" --local "$@"
+    echo "This must run as root." >&2; exit 1
+fi
 
 OS="$(detect_os)"
 say() { echo -e "\e[1;32m==>\e[0m $*"; log "install: $*"; }
@@ -107,8 +181,18 @@ ensure_packages() {   # bring older installs up to date with newer features
     fi
 }
 
+UPDATING=0; [ -x "$ROOTFS/usr/bin/waydroid" ] && UPDATING=1
+stop_running() {   # an update replaces scripts Android may be running - stop it first
+    if [ "$UPDATING" = 1 ] && [ -x "$ADDON_DIR/bin/android-service" ]; then
+        say "Stopping Android while files are updated"
+        "$ADDON_DIR/bin/android-service" stop >/dev/null 2>&1
+    fi
+}
+
 if [ "$1" = "--repair" ]; then
-    install_files; make_links; ensure_packages; reload_es; say "Repaired - now v$(cat "$SRC/VERSION")."; exit 0
+    stop_running; install_files; make_links; ensure_packages
+    "$ADDON_DIR/bin/android-service" start >/dev/null 2>&1
+    reload_es; say "Repaired - now v$(cat "$SRC/VERSION")."; exit 0
 fi
 if [ "$1" = "--rescrape" ]; then   # rebuild every 3D box + metadata
     "$ADDON_DIR/bin/android-service" start >/dev/null && \
@@ -118,15 +202,21 @@ fi
 [ "$(uname -m)" = x86_64 ] || die "Only x86_64 is supported (Waydroid images are x86_64)."
 say "Android add-on v$(cat "$SRC/VERSION" 2>/dev/null) - detected OS: $OS"
 setup_binder || die "This kernel has no binder support, so Android cannot run. (Batocera: use a recent x86_64 build.)"
-free_kb=$(df -Pk /userdata | awk 'NR==2{print $4}')
-[ "${free_kb:-0}" -gt 6000000 ] || die "Need at least 6 GB free on /userdata."
+if [ "$UPDATING" = 1 ]; then
+    say "Existing install found - updating to v$(cat "$SRC/VERSION") (apps, saves and settings are kept)"
+else
+    free_kb=$(df -Pk /userdata | awk 'NR==2{print $4}')
+    [ "${free_kb:-0}" -gt 6000000 ] || die "Need at least 6 GB free on /userdata."
+fi
 if lspci 2>/dev/null | grep -iE 'vga|3d' | grep -qi nvidia; then
     say "WARNING: NVIDIA GPU detected - Waydroid needs Intel/AMD graphics (software rendering will be slow)."
 fi
 
+stop_running
 install_files
 bootstrap_rootfs
 setup_android
+ensure_packages
 make_links
 
 say "Starting service"
@@ -135,7 +225,7 @@ reload_es
 
 cat <<EOF
 
-  Android add-on v$(cat "$SRC/VERSION") (Waydroid, Android 13 + Google Play) is installed.
+  Android add-on v$(cat "$SRC/VERSION") (Waydroid, Android 13 + Google Play) is $( [ "$UPDATING" = 1 ] && echo updated || echo installed ).
   * F1 (Applications menu):
       - Google Play Store (Android)
       - APK Manager (Android)   install / uninstall APKs + stored Google Play apps
