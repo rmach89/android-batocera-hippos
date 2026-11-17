@@ -10,6 +10,7 @@ if [ -f "$DIR/bin/android-common.sh" ]; then . "$DIR/bin/android-common.sh"
 else . /userdata/system/add-ons/android/bin/android-common.sh; fi
 need_root "$@"
 
+"$ADDON_DIR/bin/android-theme-logos" --remove 2>/dev/null     # Android logo out of all themes
 "$ADDON_DIR/bin/android-service" stop 2>/dev/null
 umount_chroot
 

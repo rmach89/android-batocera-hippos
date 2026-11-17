@@ -28,6 +28,8 @@ start() {
         for _ in $(seq 1 30); do container_running && break; sleep 1; done
     fi
     container_running && log "service: container RUNNING" || { log "service: container failed to start"; exit 1; }
+    # Android logo in every installed theme (Batocera resets /usr at boot -> re-link each start)
+    ( "$BIN/android-theme-logos" >>"$LOG" 2>&1 && reload_es ) </dev/null >/dev/null 2>&1 &
 
     # Always-on: boot Android now and keep it hidden in the background
     if always_on_wanted; then "$BIN/android-keeper" start; fi

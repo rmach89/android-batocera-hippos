@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.5** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.6** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -49,6 +49,23 @@ Google Play is copied (base + split APKs) to `/userdata/roms/android/apk/google-
 can reinstall them without the Play Store, even after a full uninstall/reinstall. Uninstalling never deletes this folder.
 
 **Exit Android:** hold **SELECT/Hotkey + START** for 1 second.
+
+## System logo in every theme
+The Android system logo (`config/theme/android-logo-light|dark.svg|png`, real vector SVGs) is added to **every
+installed EmulationStation theme**, including Batocera's built-in themes, themes you added under `/userdata/themes`,
+and HippOS's own themes. For each theme the add-on works out where that theme keeps its system logos and how it names
+them (`logos/snes.svg`, `logo-snes.png`, `snes/art/logo.svg` ...). It then links the logo in with the matching name
+and format and the matching colour: white text if the theme's logos are light, dark text if they're dark.
+- Themes that already have their own Android logo are left alone.
+- Logos are symlinks to the add-on's files. Themes in `/usr` (reset by Batocera at every boot) are re-linked each
+  time the service starts. A new theme is picked up automatically.
+- `bin/android-theme-logos --rescan` re-checks all themes now; `--remove` takes the logo out again (uninstall does this).
+
+## Achievements
+RetroAchievements doesn't support Android. It only has achievement sets for retro consoles, played through
+emulators built with its `rcheevos` library, and Android games run natively here. Android games still have
+their own achievements: sign in to **Google Play Games** (included with the Google Play image) and games that
+use Play Games achievements track and show them as on a phone.
 
 ## Supported package files
 Drop them in `/userdata/roms/android/apk` (network share: `roms/android/apk`), then **APK Manager → Install apps**.
@@ -138,6 +155,7 @@ The description, developer, publisher, release date, genre and rating are filled
 ├── bin/android-uninstall-menu             ← F1 "Uninstall Android"
 ├── bin/android-keeper                     ← Always-on background Android
 ├── bin/android-update                     ← add-on + Android updates (GitHub releases)
+├── bin/android-theme-logos                ← Android logo into every installed theme
 ├── chroot/  (session.sh, apk-manager.sh, store-play-apps.sh, padwatch.py (controllers + log), window.sh,
 │            scrape-launchbox.py, make_box3d.py, detect-input.sh, box3d/, setup-waydroid.sh)  ← bind-mounted at /opt/android
 ├── settings/android.conf                   ← ALWAYS_ON=0|1  (+ launchbox-overrides.conf)

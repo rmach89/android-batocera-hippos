@@ -1,0 +1,123 @@
+#!/bin/bash
+# Puts the Android system logo into EVERY installed EmulationStation theme, in the folder,
+# file name, format (svg/png/...) and colour (white/dark text) that theme uses for its other
+# system logos. Logos are symlinks to add-on files, so nothing is duplicated.
+#   android-theme-logos            apply (re-scans only when the installed themes changed)
+#   android-theme-logos --rescan   force a full re-scan
+#   android-theme-logos --remove   take the Android logo out of all themes again
+# Called by android-service at every start: Batocera resets /usr at boot, so links to the
+# built-in themes are re-created each time.
+SELF="$(readlink -f "$0")"
+. "$(dirname "$SELF")/android-common.sh"
+need_root "$@"
+
+ASSETS="$ADDON_DIR/config/theme"
+PLAN="$SETTINGS_DIR/theme-logos.plan"
+SIG="$SETTINGS_DIR/theme-logos.sig"
+MARK=".android-addon"
+
+theme_bases() {
+    local b
+    for b in /userdata/themes /usr/share/emulationstation/themes /etc/emulationstation/themes \
+             /userdata/system/.emulationstation/themes /root/.emulationstation/themes \
+             /usr/share/hippos*/themes /opt/*/emulationstation/themes /usr/share/*/emulationstation/themes; do
+        [ -d "$b" ] && readlink -f "$b"
+    done | sort -u
+}
+
+themes() {          # every directory that is a theme (has a theme.xml within 2 levels)
+    local b t
+    for b in $(theme_bases); do
+        for t in "$b"/*/; do
+            t="${t%/}"
+            [ -d "$t" ] || continue
+            find "$t" -maxdepth 2 -name theme.xml -print -quit 2>/dev/null | grep -q . && echo "$t"
+        done
+    done
+}
+
+remove_all() {
+    local t
+    for t in $(themes); do
+        find "$t" -maxdepth 6 -type l -lname "$ASSETS/*" -delete 2>/dev/null
+        find "$t" -maxdepth 2 -type d -name android -exec test -f '{}'/"$MARK" \; -print 2>/dev/null |
+            while read -r d; do rm -rf "$d"; done
+    done
+    rm -f "$PLAN" "$SIG"
+}
+
+asset() {           # asset <variant> <ext>  -> path of a logo in that format (made on demand)
+    local v="$1" e="$2" out="$ASSETS/android-logo-$1.$2"
+    [ -f "$out" ] && { echo "$out"; return; }
+    case "$e" in svg|png) echo "$ASSETS/android-logo-$v.png"; return ;; esac
+    # jpg / webp: convert the PNG inside the chroot (jpg has no transparency -> solid background)
+    cp -f "$ASSETS/android-logo-$v.png" "$ROOTFS/tmp/al.png" 2>/dev/null
+    in_chroot python3 - "$v" "$e" <<'PY' 2>/dev/null
+import sys
+from PIL import Image
+v, e = sys.argv[1], sys.argv[2]
+im = Image.open("/tmp/al.png").convert("RGBA")
+if e in ("jpg", "jpeg"):
+    bg = Image.new("RGBA", im.size, (0, 0, 0, 255) if v == "light" else (255, 255, 255, 255))
+    bg.alpha_composite(im); bg.convert("RGB").save("/tmp/al-out", "JPEG", quality=92)
+else:
+    im.save("/tmp/al-out", "WEBP", quality=92)
+PY
+    if [ -s "$ROOTFS/tmp/al-out" ]; then mv -f "$ROOTFS/tmp/al-out" "$out"; echo "$out"
+    else echo "$ASSETS/android-logo-$v.png"; fi
+}
+
+scan() {
+    local list=() i=0 t
+    mapfile -t list < <(themes)
+    [ ${#list[@]} -gt 0 ] || { : > "$PLAN"; return; }
+    is_mounted "$ROOTFS/proc" || mount_chroot || return 1
+    mkdir -p "$ROOTFS/mnt/themes"
+    local args=()
+    for t in "${list[@]}"; do
+        mkdir -p "$ROOTFS/mnt/themes/$i"
+        mount --bind "$t" "$ROOTFS/mnt/themes/$i" && mount -o remount,bind,ro "$ROOTFS/mnt/themes/$i" 2>/dev/null
+        args+=("/mnt/themes/$i"); i=$((i+1))
+    done
+    in_chroot python3 /opt/android/theme-logos.py "${args[@]}" > "$PLAN.raw" 2>>"$LOG"
+    for i in $(seq 0 $((${#list[@]} - 1))); do umount -l "$ROOTFS/mnt/themes/$i" 2>/dev/null; done
+    # replace the root index with the real theme path
+    : > "$PLAN"
+    while IFS=$'\t' read -r idx rest; do
+        printf '%s\t%s\n' "${list[$idx]}" "$rest" >> "$PLAN"
+    done < "$PLAN.raw"
+    rm -f "$PLAN.raw"
+}
+
+apply() {
+    local n=0 skip=0 theme a b c d e src dst
+    while IFS=$'\t' read -r theme a b c d e; do
+        [ -n "$theme" ] || continue
+        if [ "$a" = CLONE ]; then        # a=CLONE b=system dir c=logo file d=variant e=ext
+            src="$theme/$b"; dst="$theme/android"
+            if [ ! -e "$dst" ]; then
+                cp -a "$src" "$dst" 2>/dev/null && touch "$dst/$MARK" || continue
+            fi
+            [ -f "$dst/$MARK" ] || { skip=$((skip+1)); continue; }   # theme ships its own
+            ln -sfn "$(asset "$d" "$e")" "$dst/$c" 2>/dev/null && n=$((n+1))
+        else                              # a=relative path b=variant c=ext
+            dst="$theme/$a"
+            if [ -e "$dst" ] && [ ! -L "$dst" ]; then skip=$((skip+1)); continue; fi  # theme has one
+            mkdir -p "$(dirname "$dst")" 2>/dev/null
+            ln -sfn "$(asset "$b" "$c")" "$dst" 2>/dev/null && n=$((n+1))
+        fi
+    done < "$PLAN"
+    log "theme-logos: $n logo(s) linked, $skip theme(s) already had their own Android logo"
+}
+
+case "$1" in
+    --remove) remove_all; reload_es; exit 0 ;;
+    --rescan) rm -f "$SIG" ;;
+esac
+
+# re-scan only when the set of installed themes changed
+sig="$(for t in $(themes); do stat -c '%n %Y' "$t" 2>/dev/null; done | md5sum | cut -c1-32)"
+if [ ! -s "$PLAN" ] || [ "$sig" != "$(cat "$SIG" 2>/dev/null)" ]; then
+    scan && echo "$sig" > "$SIG"
+fi
+apply

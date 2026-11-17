@@ -192,6 +192,7 @@ stop_running() {   # an update replaces scripts Android may be running - stop it
 if [ "$1" = "--repair" ]; then
     stop_running; install_files; make_links; ensure_packages
     "$ADDON_DIR/bin/android-service" start >/dev/null 2>&1
+    "$ADDON_DIR/bin/android-theme-logos" --rescan
     reload_es; say "Repaired - now v$(cat "$SRC/VERSION")."; exit 0
 fi
 if [ "$1" = "--rescrape" ]; then   # rebuild every 3D box + metadata
@@ -221,6 +222,8 @@ make_links
 
 say "Starting service"
 "$ADDON_DIR/bin/android-service" start || die "service failed to start - see $LOG"
+say "Adding the Android logo to your EmulationStation themes"
+"$ADDON_DIR/bin/android-theme-logos" --rescan
 reload_es
 
 cat <<EOF
