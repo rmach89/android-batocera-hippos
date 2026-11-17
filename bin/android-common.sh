@@ -169,7 +169,8 @@ remove_desktop_links() {
     local d
     for d in $DESKTOP_DIRS; do
         rm -f "$d"/android-playstore.desktop "$d"/android-apk-manager.desktop "$d"/android-uninstall.desktop \
-              "$d"/android-waydroid.desktop "$d"/android-fdroid.desktop 2>/dev/null
+              "$d"/android-waydroid.desktop "$d"/android-fdroid.desktop \
+              "$d"/android-aurora.desktop "$d"/android-aptoide.desktop 2>/dev/null
     done
 }
 

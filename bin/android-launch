@@ -4,7 +4,7 @@
 #   android-launch --app <package>                         F1 menu: e.g. Google Play Store
 #   android-launch --manager                               F1 menu: APK Manager
 #   android-launch --desktop                               F1 menu: Waydroid (Android home screen)
-#   android-launch --fdroid                                F1 menu: F-Droid app store
+#   android-launch --fdroid | --aurora | --aptoide         F1 menu: F-Droid / Aurora Store / Aptoide
 #   android-launch --stop                                  leave Android (like Select+Start)
 
 SELF="$(readlink -f "$0")"
@@ -17,7 +17,9 @@ case "$1" in
                mkdir -p "$STATE"; touch "$STATE/quit"; exit 0 ;;
     --manager) MODE=manager; TARGET="" ;;
     --desktop) MODE=app; TARGET="com.android.launcher3" ;;   # Android home screen + app drawer
-    --fdroid)  MODE=app; TARGET="org.fdroid.fdroid" ;;      # F-Droid (installed on first launch)
+    --fdroid)  MODE=app; TARGET="org.fdroid.fdroid" ;;      # F-Droid      (installed on first launch)
+    --aurora)  MODE=app; TARGET="com.aurora.store" ;;       # Aurora Store (installed on first launch)
+    --aptoide) MODE=app; TARGET="cm.aptoide.pt" ;;          # Aptoide      (installed on first launch)
     --app)     MODE=app; TARGET="$2" ;;
     *)
         [ -f "$1" ] || { log "launch: no such file $1"; exit 1; }

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Aurora Store (Android)
+Comment=Google Play catalog without a Google account (installs itself on first launch)
+Exec=/userdata/system/add-ons/android/bin/android-launch --aurora
+Icon=/userdata/system/add-ons/android/config/icons/android-aurora.png
+Terminal=false
+Categories=Game;batocera.linux;

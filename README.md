@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.8** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.9** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -33,12 +33,14 @@ Prefer a download? Get the zip (**Code → Download ZIP** or from [Releases](htt
 unzip it on the machine and run `bash install.sh`. It still updates itself if GitHub has something newer.
 
 ## What you get
-**F1 → Applications menu** (five entries)
+**F1 → Applications menu** (seven entries)
 | Entry | Does |
 |---|---|
 | Google Play Store (Android) | Opens Android with the Play Store |
 | APK Manager (Android) | Controller-driven menu: install `.apk` `.xapk` `.apks` `.apkm` files from `roms/android/apk`, reinstall stored Google Play apps, uninstall apps (labelled *[Google Play]* or *[APK]*), store Play apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
 | F-Droid (Android) | The free and open-source Android app store. It downloads and installs itself the first time you open it, and games you install from it appear in the ANDROID system like any other |
+| Aurora Store (Android) | The Google Play catalog without a Google account. It installs itself on first open, using the newest build from the official F-Droid repository |
+| Aptoide (Android) | A community Android app store. It installs itself on first open, from Aptoide's official store, and the download is checked against Aptoide's published MD5 checksum |
 | Waydroid (Android) | Opens Android's home screen and app drawer: Android Settings, files, any app. Handy when you need to get into Android itself |
 | Uninstall Android | Asks first. Choose **Cancel**, **Uninstall but keep apps + saves**, or **Uninstall everything** |
 
@@ -158,7 +160,7 @@ The description, developer, publisher, release date, genre and rating are filled
 ├── bin/android-update                     ← add-on + Android updates (GitHub releases)
 ├── bin/android-theme-logos                ← Android logo into every installed theme
 ├── chroot/  (session.sh, apk-manager.sh, store-play-apps.sh, padwatch.py (controllers + log), window.sh,
-│            scrape-launchbox.py, make_box3d.py, detect-input.sh, box3d/, setup-waydroid.sh)  ← bind-mounted at /opt/android
+│            scrape-launchbox.py, make_box3d.py, detect-input.sh, store-apk-url.py, box3d/, setup-waydroid.sh)  ← bind-mounted at /opt/android
 ├── settings/android.conf                   ← ALWAYS_ON=0|1  (+ launchbox-overrides.conf)
 ├── config/es_systems_android.cfg
 ├── config/applications/*.desktop           ← F1 menu entries

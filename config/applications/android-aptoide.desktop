@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Aptoide (Android)
+Comment=Community Android app store (installs itself on first launch)
+Exec=/userdata/system/add-ons/android/bin/android-launch --aptoide
+Icon=/userdata/system/add-ons/android/config/icons/android-aptoide.png
+Terminal=false
+Categories=Game;batocera.linux;
