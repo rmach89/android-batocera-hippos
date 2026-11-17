@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.0.7** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.0.8** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
