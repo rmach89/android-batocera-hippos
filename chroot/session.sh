@@ -49,6 +49,9 @@ leave_android() {   # back to ES: save state, refresh lists
     cache_apps
     /opt/android/installed-apps.sh --cache >/dev/null 2>&1          # what YOU installed -> game list
     /opt/android/store-installed-apps.sh >/dev/null 2>&1             # copies of every store install
+    # saves / OBB game data (only if turned on in APK Manager): file copies, no Android needed,
+    # so it runs in the background and never delays returning to EmulationStation
+    setsid nohup /opt/android/app-data.sh auto >>/var/log/android-addon/android.log 2>&1 </dev/null &
     /opt/android/detect-input.sh >/dev/null 2>&1                     # controller / touch badges
 }
 

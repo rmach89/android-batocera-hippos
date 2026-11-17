@@ -78,6 +78,9 @@ install_menu() {
                     out+="$r\n" ;;
             store:*) f="${it#store:}"; busy "Reinstalling ${f#*/} ..."
                     if install_bundle "$APK_DIR/$f"; then ok=$((ok+1)); out+="OK    ${f#*/}\n"
+                        [ -d "$APK_DIR/$f/obb" ] && { busy "Restoring game data (OBB) for ${f#*/} ..."
+                            /opt/android/app-data.sh obb-restore "${f#*/}" "$APK_DIR/$f" >/dev/null && out+="      + game data (OBB)\n"; }
+                        [ -n "$(ls "$SAVES_DIR/${f#*/}"/*.tar.gz 2>/dev/null)" ] && out+="      saves backup found: Game saves -> Restore\n"
                     else fail=$((fail+1)); out+="FAIL  ${f#*/}\n"; fi ;;
         esac
     done <<< "$pick"
@@ -108,6 +111,58 @@ store_menu() {
 }
 
 CONF=/etc/android-addon/android.conf
+SAVES_DIR=/mnt/android-roms/saves
+conf_is() { [ "$(sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -n1)" = 1 ]; }
+conf_set() { sed -i "/^$1=/d" "$CONF"; echo "$1=$2" >> "$CONF"; }
+
+pick_app() {    # pick_app "prompt" [only-with-backups] -> package on stdout
+    local items=() p sid label n
+    while IFS=$'\t' read -r p sid label n; do
+        [ "$2" = backups ] && [ -z "$(ls "$SAVES_DIR/$p"/*.tar.gz 2>/dev/null)" ] && continue
+        items+=("$p" "[$label] $n")
+    done < <(/opt/android/installed-apps.sh | sort -t$'\t' -k4,4f)
+    [ ${#items[@]} -eq 0 ] && { msg "No apps found${2:+ with a saves backup}."; return 1; }
+    dialog --backtitle "$T" --menu "$1" 20 76 12 "${items[@]}" 3>&1 1>&2 2>&3
+}
+
+saves_menu() {
+    while true; do
+        local c AS AO
+        conf_is BACKUP_SAVES && AS=ON || AS=OFF
+        conf_is BACKUP_OBB && AO=ON || AO=OFF
+        c=$(dialog --backtitle "$T" --menu "Game saves + game data\n\nSaves: roms/android/saves/<package>/  (newest 5 kept)\nOBB game data: next to the stored APKs in roms/android/apk/<store>/" 18 76 6 \
+            1 "Back up an app's saves now" \
+            2 "Restore an app's saves" \
+            3 "Back up ALL apps' saves now" \
+            4 "Auto-backup saves when leaving Android: $AS" \
+            5 "Back up OBB game data with store apps: $AO" \
+            6 "Back" 3>&1 1>&2 2>&3) || return
+        case "$c" in
+            1) local p; p=$(pick_app "Back up saves of:") || continue
+               busy "Backing up $p ..."; msg "$(/opt/android/app-data.sh backup "$p" 2>&1)" ;;
+            2) local p f items=() b; p=$(pick_app "Restore saves of:" backups) || continue
+               while IFS= read -r b; do items+=("$b" "$(basename "$b" .tar.gz | sed 's/\(....\)\(..\)\(..\)-\(..\)\(..\)\(..\)/\1-\2-\3 \4:\5:\6/')"); done \
+                   < <(/opt/android/app-data.sh list "$p")
+               f=$(dialog --backtitle "$T" --no-tags --menu "Restore which backup of $p?\n(The app's current progress is replaced.)" 18 70 8 "${items[@]}" 3>&1 1>&2 2>&3) || continue
+               busy "Restoring $p ..."; msg "$(/opt/android/app-data.sh restore "$p" "$f" 2>&1)" ;;
+            3) /opt/android/installed-apps.sh | cut -f1 | grep -vxE 'org.fdroid.fdroid|org.fdroid.basic|com.aurora.store|cm.aptoide.pt' |
+                   while read -r p; do /opt/android/app-data.sh backup "$p"; done 2>&1 | tee /tmp/saves.txt |
+                   dialog --backtitle "$T" --progressbox "Backing up saves ..." 20 76
+               dialog --backtitle "$T" --title "Saves backup" --textbox /tmp/saves.txt 20 76 ;;
+            4) if conf_is BACKUP_SAVES; then conf_set BACKUP_SAVES 0; msg "Auto-backup of saves is OFF."
+               else conf_set BACKUP_SAVES 1
+                    msg "Auto-backup of saves is ON.\n\nEvery time you leave Android, apps whose data changed are backed up\nto roms/android/saves/ (newest 5 per app). It runs in the background."
+               fi ;;
+            5) if conf_is BACKUP_OBB; then conf_set BACKUP_OBB 0; msg "OBB game data backup is OFF."
+               else
+                   dialog --backtitle "$T" --yesno "Back up OBB game data too?\n\nSome big games download extra data (often 1-4 GB) after install.\nWith this ON it is copied next to the stored APKs, so a reinstall from\nAPK Manager works fully without the store. Needs that much free space\non the share. Only changed data is copied, in the background." 14 76 || continue
+                   conf_set BACKUP_OBB 1; msg "OBB game data backup is ON.\nIt runs the next time you leave Android."
+               fi ;;
+            *) return ;;
+        esac
+    done
+}
+
 always_on() { [ "$(sed -n 's/^ALWAYS_ON=//p' "$CONF" 2>/dev/null | tail -n1)" = 1 ]; }
 
 toggle_always_on() {
@@ -225,7 +280,7 @@ play_cert() {
 while true; do
     always_on && AO="ON " || AO="OFF"
     multi_window && AM="Native windows" || AM="Full Android"
-    c=$(dialog --backtitle "$T" --no-cancel --menu "D-pad = move   A = select   Select+Start = exit" 23 72 12 \
+    c=$(dialog --backtitle "$T" --no-cancel --menu "D-pad = move   A = select   Select+Start = exit" 24 72 13 \
         1 "Install apps  (APK, XAPK, APKS, APKM + saved store apps)" \
         2 "Uninstall apps" \
         3 "Save copies of store apps now" \
@@ -235,8 +290,9 @@ while true; do
         7 "App mode: $AM" \
         8 "Rebuild 3D boxes + game info (all sources)" \
         9 "Controllers: test, log, what Android sees" \
-        10 "Updates: add-on + Android" \
-        11 "Exit" 3>&1 1>&2 2>&3) || c=11
+        10 "Updates: add-on, Android, app stores" \
+        11 "Game saves + game data (backup / restore)" \
+        12 "Exit" 3>&1 1>&2 2>&3) || c=12
     case "$c" in
         1) install_menu ;;
         2) uninstall_menu ;;
@@ -248,6 +304,7 @@ while true; do
         8) rebuild_boxes ;;
         9) controllers_menu ;;
         10) updates_menu ;;
-        11) exit 0 ;;
+        11) saves_menu ;;
+        12) exit 0 ;;
     esac
 done

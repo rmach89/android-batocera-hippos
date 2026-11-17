@@ -13,8 +13,8 @@ REPO="rmach89/android-batocera-hippos"
 
 # ------------------------------------------------------------------ bootstrap from GitHub
 # Runs before anything else, so it works when piped (curl | bash), when this file was
-# downloaded alone, or from an older copy: it downloads the newest release and re-runs
-# that release's install.sh. Needs only bash, tar, gzip and curl or wget.
+# downloaded alone, or from an older copy: it downloads the newest version (release or main,
+# whichever is newer) and re-runs that version's install.sh. Needs only bash, tar, gzip and curl or wget.
 LOCAL=0; _args=()
 for _a in "$@"; do [ "$_a" = "--local" ] && LOCAL=1 || _args+=("$_a"); done
 set -- "${_args[@]}"
@@ -39,15 +39,14 @@ if [ -z "$ANDROID_ADDON_BOOTSTRAPPED" ] && [ "$LOCAL" = 0 ]; then
     [ -n "$SRC" ] && [ -f "$SRC/bin/android-common.sh" ] && _have_local=1
     _local_ver="v$(cat "$SRC/VERSION" 2>/dev/null || echo 0.0.0)"
 
-    # newest version: a published release if there is one, else the main branch
+    # newest version: the published release or the main branch, whichever is newer
     _tag=""; _url=""
     _json="$(_fetch "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null)"
-    _tag="$(echo "$_json" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
-    if [ -n "$_tag" ]; then
-        _url="https://github.com/$REPO/archive/refs/tags/$_tag.tar.gz"
-    else
-        _v="$(_fetch "https://raw.githubusercontent.com/$REPO/main/VERSION" 2>/dev/null | tr -dc '0-9.')"
-        [ -n "$_v" ] && { _tag="v$_v"; _url="https://github.com/$REPO/archive/refs/heads/main.tar.gz"; }
+    _rtag="$(echo "$_json" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    [ -n "$_rtag" ] && { _tag="$_rtag"; _url="https://github.com/$REPO/archive/refs/tags/$_rtag.tar.gz"; }
+    _v="$(_fetch "https://raw.githubusercontent.com/$REPO/main/VERSION" 2>/dev/null | tr -dc '0-9.')"
+    if [ -n "$_v" ] && { [ -z "$_tag" ] || [ "$(_vnum "v$_v")" -gt "$(_vnum "$_tag")" ]; }; then
+        _tag="v$_v"; _url="https://github.com/$REPO/archive/refs/heads/main.tar.gz"
     fi
 
     if [ -n "$_url" ] && { [ "$_have_local" = 0 ] || [ "$(_vnum "$_tag")" -gt "$(_vnum "$_local_ver")" ]; }; then

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Print "<tag> <zip-url>" for the newest add-on version (runs inside the chroot).
 
-1. A published GitHub release (uses its attached .zip, else the source zip)
-2. Otherwise the VERSION file on the main branch + the main branch zip
+Checks both and uses whichever is NEWER (a tie goes to the release):
+  - the latest published GitHub release (its attached .zip, else the source zip)
+  - the VERSION file on the main branch + the main branch zip
+So an old release never hides newer fixes pushed to main.
 """
 import json, sys, urllib.request
 
@@ -15,14 +17,27 @@ def get(url):
     return urllib.request.urlopen(req, timeout=20).read()
 
 
+def ver(tag):
+    try:
+        return tuple(int(x) for x in tag.lstrip("v").split("."))
+    except ValueError:
+        return (0,)
+
+
+candidates = []          # (version, tag, url) - whichever is newer wins
 try:
     r = json.loads(get(f"https://api.github.com/repos/{REPO}/releases/latest"))
     url = next((a["browser_download_url"] for a in r.get("assets", []) if a["name"].endswith(".zip")),
                r["zipball_url"])
-    print(r["tag_name"], url)
+    candidates.append((ver(r["tag_name"]), r["tag_name"], url))
 except Exception:
-    try:
-        v = get(f"https://raw.githubusercontent.com/{REPO}/main/VERSION").decode().strip()
-        print("v" + v.lstrip("v"), f"https://github.com/{REPO}/archive/refs/heads/main.zip")
-    except Exception as ex:
-        sys.exit(f"could not reach GitHub: {ex}")
+    pass
+try:
+    v = "v" + get(f"https://raw.githubusercontent.com/{REPO}/main/VERSION").decode().strip().lstrip("v")
+    candidates.append((ver(v), v, f"https://github.com/{REPO}/archive/refs/heads/main.zip"))
+except Exception:
+    pass
+if not candidates:
+    sys.exit("could not reach GitHub")
+_, tag, url = max(candidates, key=lambda c: c[0])      # a tie keeps the release (listed first)
+print(tag, url)

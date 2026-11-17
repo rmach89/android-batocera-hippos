@@ -7,13 +7,14 @@
   com.aurora.store   Aurora Store  newest build in the official F-Droid repository
   cm.aptoide.pt      Aptoide       Aptoide's own official store ("aptoide-web"), with md5 to verify
 """
-import json, sys, urllib.request
+import json, os, sys, urllib.request
 
 UA = {"User-Agent": "android-addon"}
+TIMEOUT = float(os.environ.get("STORE_URL_TIMEOUT", "30"))   # short when only checking for an update
 
 
 def get_json(url):
-    return json.load(urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30))
+    return json.load(urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=TIMEOUT))
 
 
 def fdroid(pkg):

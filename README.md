@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.1.0** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.1.1** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -60,6 +60,18 @@ is copied (base + split APKs) to `/userdata/roms/android/apk/<store>/<package>/`
 
 APK Manager can reinstall them without the store, even after a full uninstall/reinstall. Uninstalling never deletes these folders.
 
+## Game saves + game data (off by default)
+**APK Manager → Game saves + game data**:
+- **Back up / restore an app's saves.** The app's private data (progress, settings, offline saves) plus its
+  `Android/data` folder when that's under 500 MB, to `roms/android/saves/<package>/<date-time>.tar.gz`.
+  The newest 5 per app are kept. Restore works after a reinstall too (install the app first, then restore).
+- **Auto-backup saves when leaving Android** (`BACKUP_SAVES=1`): only apps whose data changed, in the background.
+- **Back up OBB game data with store apps** (`BACKUP_OBB=1`): big games that download extra data after install
+  (`Android/obb/<package>`, often 1–4 GB) get it copied next to their stored APKs. Reinstalling from APK Manager
+  then puts it back, so the game works fully without the store. Only changed data is copied, in the background.
+
+Games signed in to Google Play Games usually sync their saves online as well.
+
 **Exit Android:** hold **SELECT/Hotkey + START** for 1 second.
 
 ## System logo in every theme
@@ -107,7 +119,8 @@ Always-on needs a plain X11 screen (Batocera's normal PC setup). On a Wayland or
 automatically stays on-demand.
 
 ## Updates
-**APK Manager → Updates** shows your installed version and the newest one on GitHub, and offers:
+**APK Manager → Updates** shows your installed version and the newest one on GitHub (a published release or the
+`main` branch, whichever is newer, so an old release never hides newer fixes), and offers:
 - **Update the add-on**: installs the newest release. Apps, saves, settings and boxes are kept.
 - **Update Android**: updates Waydroid and its helper packages, then downloads the newest Android (LineageOS) system
   image with `waydroid upgrade`. ARM translation and Play Store registration are kept.
@@ -116,7 +129,8 @@ automatically stays on-demand.
 - **Update everything**
 
 Add-on and Android updates install in the background as soon as you leave APK Manager. Progress goes to `android.log`.
-The app stores also check for a newer build of themselves (at most once a day) whenever you open them from F1,
+The app stores also check for a newer build of themselves (at most once a day) whenever you open them from F1.
+When you're offline that check gives up after a few seconds and isn't retried for an hour,
 and the stores keep your games up to date.
 
 From SSH:

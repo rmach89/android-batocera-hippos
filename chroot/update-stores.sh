@@ -30,11 +30,15 @@ install_from() {        # install_from PKG URL MD5 CODE
     echo "$(store_name "$pkg"): installed build $code"
 }
 
-update_one() {          # update_one PKG [quiet-if-current]
+update_one() {          # update_one PKG
     local pkg="$1" have url md5 code
     have=$(installed_code "$pkg")
-    read -r url md5 code < <(newest "$pkg") || true
-    [ -n "$url" ] || return 1
+    # already installed = only an update check: give up after a few seconds when offline
+    read -r url md5 code < <(STORE_URL_TIMEOUT=$([ -n "$have" ] && echo 6 || echo 30) newest "$pkg") || true
+    if [ -z "$url" ]; then
+        touch -d '-23 hours' "$STAMP/$pkg" 2>/dev/null   # offline: try again in an hour, not every open
+        return 1
+    fi
     if [ -z "$have" ] || [ "${code:-0}" -gt "$have" ]; then
         install_from "$pkg" "$url" "$md5" "${code:-0}"
     fi
