@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Render a 3D CD-jewel-case box for an Android game.
+"""Render a 3D box for an Android game, in the case style that fits its cover:
 
-    make_box3d.py <front-art> "<Game Title>" <out.png> [--size 640]
+    make_box3d.py <front-art> "<Game Title>" <out.png> [--size 640] [--style auto|jewel|dvd]
 
-* Jewel-case style: 10 mm spine, 125 mm tall; the front's width follows the cover image so
-  the whole cover fills the front exactly (square covers -> square art area).
+* Tall (portrait) covers -> DVD keep-case: rounded black case, thick rounded spine
+  (design adapted from rmach89/xcloud-batocera-hippos gamebox3d.py).
+* Square / wide covers  -> CD jewel case: 10 mm spine, 125 mm tall; the front's width follows
+  the cover image so the whole cover fills the front exactly.
 * Front: black "android" band across the top, game art below it, and an optional
   support badge (controller / touch) in the bottom-right corner.
 * Spine: Android bot at the top, game title running down the spine.
@@ -18,7 +20,10 @@ ASSETS = os.environ.get("BOX3D_ASSETS", os.path.join(HERE, "box3d"))
 GREEN = (61, 220, 132)
 CASE = (30, 31, 34)
 FONT_CANDIDATES = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                   "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"]
+                   "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+                   "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"]
+BOX_STYLE_VERSION = 2       # bump to redraw every box after a design change (2: DVD case for tall covers)
+DVD_MAX_ASPECT = 0.85       # cover width/height at or below this -> DVD keep-case
 
 # texture sizes (px) - 8 px per mm
 MM = 8
@@ -167,7 +172,7 @@ def warp(tex, quad, size):
                          Image.BICUBIC, fillcolor=(0, 0, 0, 0))
 
 
-def render(art, title, out_h=640, badge=None):
+def render_jewel(art, title, out_h=640, badge=None):
     S = 2                                   # supersample
     H = out_h * S
     front = front_texture(art.convert("RGBA"), badge)
@@ -197,10 +202,127 @@ def render(art, title, out_h=640, badge=None):
     return canvas.resize((canvas.width // S, canvas.height // S), Image.LANCZOS)
 
 
+
+# ------------------------------------------------------------------ DVD keep-case
+# Shape, spine and perspective adapted from the xcloud add-on's gamebox3d.py; header,
+# colours and badge are the Android ones used on the jewel case.
+def _round(img, r):
+    m = Image.new("L", img.size, 0)
+    ImageDraw.Draw(m).rounded_rectangle([0, 0, img.width - 1, img.height - 1], radius=r, fill=255)
+    out = img.convert("RGBA"); out.putalpha(m)
+    return out
+
+
+def _spaced(d, xy, text, f, fill, spacing):
+    x, y = xy
+    for c in text:
+        d.text((x, y), c, font=f, fill=fill, anchor="lm")
+        x += d.textlength(c, font=f) + spacing
+
+
+def dvd_front(art, badge=None, W=640, H=960):
+    face = Image.new("RGBA", (W, H), (6, 6, 6, 255))
+    head, edge = 86, 11
+    d = ImageDraw.Draw(face)
+    for y in range(head):                                # glossy black header, a hint of green
+        t = y / head
+        d.line([(0, y), (W, y)], fill=(int(24 - 18 * t), int(34 - 24 * t), int(28 - 20 * t), 255))
+    word = tinted(os.path.join(ASSETS, "android-wordmark-mask.png"), (255, 255, 255), 40)
+    bot = tinted(os.path.join(ASSETS, "android-head-mask.png"), GREEN, 38)
+    gap = 14
+    x0 = (W - (word.width + gap + bot.width)) // 2
+    face.alpha_composite(word, (x0, (head - word.height) // 2 + 2))
+    face.alpha_composite(bot, (x0 + word.width + gap, (head - bot.height) // 2 + 4))
+    for i in range(14):                                  # the glowing line under the header
+        a = max(0, 1 - i / 14) ** 2
+        base = face.getpixel((5, head - i))[:3]
+        d.line([(0, head - i), (W, head - i)], fill=tuple(int(c1 * (1 - a * 0.5) + c2 * a * 0.5) for c1, c2 in zip(base, GREEN)) + (255,))
+    d.rectangle([0, head, W, head + 5], fill=(30, 160, 90, 255))
+    d.line([(0, head), (W, head)], fill=(150, 240, 190, 255), width=2)
+    aw, ah = W - 2 * edge, H - head - 5 - edge
+    a_in = art.width / art.height
+    if abs(a_in - aw / ah) / (aw / ah) <= 0.12:          # close to the case shape: fill it
+        pic = ImageOps.fit(art.convert("RGB"), (aw, ah), Image.LANCZOS).convert("RGBA")
+    else:                                                # far off: whole image on a blurred fill
+        pic = fit_art(art, aw, ah)
+    face.alpha_composite(pic, (edge, head + 5))
+    if badge in ("controller", "touch"):
+        b = badge_image(badge, int(ah * 0.12))
+        face.alpha_composite(b, (edge + aw - b.width - 6, head + 5 + ah - b.height - 6))
+    return _round(face, 16)
+
+
+def dvd_spine(title, W=58, H=960):
+    sp = Image.new("RGBA", (W, H), (4, 4, 4, 255))
+    d = ImageDraw.Draw(sp)
+    for x in range(W):                                   # rounded plastic: lighter in the middle
+        v = int(4 + 20 * max(0, 1 - abs(x - W * 0.45) / (W / 2)) ** 2)
+        d.line([(x, 0), (x, H)], fill=(v, v, v, 255))
+    bot = tinted(os.path.join(ASSETS, "android-head-mask.png"), GREEN, W - 26)
+    if bot.width > W - 16:
+        bot = bot.resize((W - 16, max(1, int(bot.height * (W - 16) / bot.width))), Image.LANCZOS)
+    sp.alpha_composite(bot, ((W - bot.width) // 2, 28))
+    side = Image.new("RGBA", (H - 120, W), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(side)
+    t, size = title.upper(), 27
+    f = font(size)
+    width = lambda: sum(sd.textlength(c, font=f) for c in t) + 10 * (len(t) - 1)
+    while width() > side.width - 30 and len(t) > 3:
+        size -= 2
+        if size < 18:
+            t, size = t[:-2].rstrip() + "...", 18
+        f = font(size)
+    _spaced(sd, (6, W / 2 + 1), t, f, (255, 255, 255, 255), 10)
+    side = side.rotate(-90, expand=True)
+    sp.alpha_composite(side, (0, 96))
+    return _round(sp, 10)
+
+
+def render_dvd(art, title, out_h=640, badge=None):
+    S = 2
+    CW2, CH2 = 620 * S, 910 * S
+    canvas = Image.new("RGBA", (CW2, CH2), (0, 0, 0, 0))
+    sx0, sx1, fx1 = 16 * S, 52 * S, 604 * S
+    front_q = [(sx1, 10 * S), (fx1, 34 * S), (fx1, 872 * S), (sx1, 898 * S)]
+    spine_q = [(sx0, 22 * S), (sx1, 10 * S), (sx1, 898 * S), (sx0, 886 * S)]
+    sh = Image.new("L", (CW2, CH2), 0)                   # soft shadow on the floor
+    ImageDraw.Draw(sh).polygon([(sx0 + 10 * S, 892 * S), (fx1, 866 * S), (fx1 - 6 * S, 880 * S), (sx0 + 20 * S, 906 * S)], fill=160)
+    sh = sh.filter(ImageFilter.GaussianBlur(10 * S))
+    shadow = Image.new("RGBA", (CW2, CH2), (0, 0, 0, 0)); shadow.putalpha(sh)
+    canvas.alpha_composite(shadow)
+    canvas.alpha_composite(warp(dvd_spine(title), spine_q, (CW2, CH2)))
+    canvas.alpha_composite(warp(dvd_front(art.convert("RGBA"), badge), front_q, (CW2, CH2)))
+    gloss = Image.new("L", (CW2, CH2), 0)                # soft gloss across the cover
+    ImageDraw.Draw(gloss).polygon([(sx1, 10 * S), (sx1 + 260 * S, 22 * S), (sx1 + 40 * S, 896 * S), (sx1, 898 * S)], fill=30)
+    gloss = gloss.filter(ImageFilter.GaussianBlur(60 * S))
+    mask = Image.new("L", (CW2, CH2), 0)
+    ImageDraw.Draw(mask).polygon(front_q, fill=255)
+    gloss = Image.composite(gloss, Image.new("L", (CW2, CH2), 0), mask)
+    canvas.alpha_composite(Image.merge("RGBA", (Image.new("L", (CW2, CH2), 255),) * 3 + (gloss,)))
+    e = ImageDraw.Draw(canvas)                           # light catching the case edges
+    e.line([(sx1, 16 * S), (sx1, 892 * S)], fill=(255, 255, 255, 60), width=S)
+    e.line([(fx1 - 1 * S, 46 * S), (fx1 - 1 * S, 860 * S)], fill=(255, 255, 255, 50), width=S)
+    canvas = canvas.crop(canvas.getbbox())
+    return canvas.resize((max(1, round(canvas.width * out_h / canvas.height)), out_h), Image.LANCZOS)
+
+
+def case_style(art):
+    return "dvd" if art.width / art.height <= DVD_MAX_ASPECT else "jewel"
+
+
+def render(art, title, out_h=640, badge=None, style="auto"):
+    """Tall covers get a DVD keep-case, square / wide covers a CD jewel case."""
+    if style == "auto":
+        style = case_style(art)
+    return (render_dvd if style == "dvd" else render_jewel)(art, title, out_h, badge)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("art"); ap.add_argument("title"); ap.add_argument("out")
     ap.add_argument("--size", type=int, default=640, help="output height in px")
     ap.add_argument("--badge", choices=["controller", "touch"], help="support badge, bottom-right")
+    ap.add_argument("--style", choices=["auto", "jewel", "dvd"], default="auto",
+                    help="case: auto = DVD for tall covers, jewel case otherwise")
     a = ap.parse_args()
-    render(Image.open(a.art), a.title, a.size, a.badge).save(a.out, optimize=True)
+    render(Image.open(a.art), a.title, a.size, a.badge, a.style).save(a.out, optimize=True)

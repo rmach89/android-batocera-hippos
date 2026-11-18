@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.1.3** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.1.4** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -176,12 +176,21 @@ Switch it in **APK Manager → App mode**, or with `/userdata/system/services/an
 The new mode applies the next time Android starts. Android restarts once to apply it.
 
 ## 3D boxes + game info (LaunchBox, ScreenScraper, Google Play, F-Droid)
-Every game in ANDROID gets a CD-jewel-case 3D box:
+Every game in ANDROID (HippOS: Android Games) gets a 3D box in the case style that fits its cover:
+
+| Cover shape | Case |
+|---|---|
+| tall / portrait (width ≤ 0.85 × height, e.g. retail-style box art) | **DVD keep-case**: rounded black case, thick rounded spine with the game name in spaced capitals |
+| square or wide (app icons, store graphics, CD-style art) | **CD jewel case**: thin spine, the box takes the cover's shape |
+
+Both have:
 - the black **android** band across the top;
 - the Android bot and the game title on the spine;
-- the best cover found on the front.
+- the best cover found on the front, with the controller / touch badge bottom-right.
 
-The box takes the shape of the cover, so the whole image always fits.
+The jewel case takes the shape of the cover, so the whole image always fits. The DVD case fills its front with the
+cover: trimmed slightly if it's a little off the DVD shape, shown whole on a blurred fill if it's far off.
+Existing boxes are redrawn in the right style automatically the next time you leave Android.
 The description, developer, publisher, release date, genre and rating are filled in too, plus background art
 (`fanart`) and a wheel logo (`marquee`) when a source has them.
 

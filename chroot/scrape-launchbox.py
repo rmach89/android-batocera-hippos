@@ -27,7 +27,7 @@ import os, re, sys, json, time, fcntl, glob, difflib, zipfile, unicodedata, urll
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from make_box3d import render   # noqa: E402
+from make_box3d import render, BOX_STYLE_VERSION   # noqa: E402
 import metadata_sources as ms   # noqa: E402
 from PIL import Image, ImageDraw, ImageFont
 
@@ -306,7 +306,7 @@ def main():
     by_path = {g.findtext("path"): g for g in root.findall("game")}
     todo = [e for e in entries if force or not os.path.exists(os.path.join(IMG_DIR, e[1] + "-box3d.png"))
             or by_path.get("./" + e[0]) is None
-            or drawn.get(e[2]) != badge_of(e[2])]          # badge became known / changed
+            or drawn.get(e[2]) != f"{BOX_STYLE_VERSION}:{badge_of(e[2])}"]   # badge or box design changed
 
     games, matcher = {}, None
     if todo and "launchbox" in order:
@@ -366,7 +366,7 @@ def main():
         box = os.path.join(IMG_DIR, title + "-box3d.png")
         badge = badge_of(pkg)
         render(Image.open(cover), meta.get("name") or title, 640, badge).save(box, optimize=True)
-        drawn[pkg] = badge
+        drawn[pkg] = f"{BOX_STYLE_VERSION}:{badge}"
 
         game = by_path.get(path)
         if game is None:
