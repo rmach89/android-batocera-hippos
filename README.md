@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.1.2** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.1.3** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -66,12 +66,12 @@ Android Games / Android Apps go back to HippOS's standard setup.
 | Entry | Does |
 |---|---|
 | Google Play Store (Android) | Opens Android with the Play Store |
-| APK Manager (Android) | Controller-driven menu: install `.apk` `.xapk` `.apks` `.apkm` files from `roms/android/apk`, reinstall stored store apps, uninstall apps (each labelled with where it came from: *[Google Play]* *[F-Droid]* *[Aurora]* *[Aptoide]* *[APK]*), back up store apps now, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes |
-| F-Droid (Android) | The free and open-source Android app store. It downloads and installs itself the first time you open it and keeps itself on the newest official build, and games you install from it appear in the ANDROID system like any other |
+| APK Manager (Android) | Controller-driven menu: install `.apk` `.xapk` `.apks` `.apkm` files from `roms/android/apk` (HippOS: `roms/android-apk`), reinstall stored store apps, uninstall apps (each labelled with where it came from: *[Google Play]* *[F-Droid]* *[Aurora]* *[Aptoide]* *[APK]*), back up store apps now, **game saves + OBB backup/restore**, Play Store device registration, **Always-on** on/off, **App mode**, rebuild 3D boxes, **controller test + log**, **updates** (add-on, Android, app stores) |
+| F-Droid (Android) | The free and open-source Android app store. It downloads and installs itself the first time you open it and keeps itself on the newest official build, and games you install from it appear in the ANDROID system (HippOS: Android Games) like any other |
 | Aurora Store (Android) | The Google Play catalog without a Google account. It installs itself on first open, using the newest build from the official F-Droid repository |
 | Aptoide (Android) | A community Android app store. It installs itself on first open, from Aptoide's official store, and the download is checked against Aptoide's published MD5 checksum |
-| Waydroid (Android) | Opens Android's home screen and app drawer: Android Settings, files, any app. Handy when you need to get into Android itself |
-| Uninstall Android | Asks first. Choose **Cancel**, **Uninstall but keep apps + saves**, or **Uninstall everything** |
+| Waydroid (Android) | Opens Android's home screen and app drawer: Android Settings, files, any app. Handy when you need to get into Android itself. *(HippOS: its own Waydroid entry in Android Apps does this)* |
+| Uninstall Android | Asks first. Choose **Cancel**, **Uninstall but keep apps + saves**, or **Uninstall everything** *(HippOS: Cancel or Remove the add-on; Android, apps and saves always stay)* |
 
 **EmulationStation → ANDROID** lists every app *you* installed (Android's own third-party app list, so nothing
 is hidden because of its package name, e.g. Google-made games show up too), each one launching straight in.
@@ -225,7 +225,7 @@ Your normal ScreenScraper login is read from Batocera's scraper settings automat
 * LaunchBox and ScreenScraper match by name (LaunchBox alternate names too); Google Play and F-Droid by the exact package name.
 * Wrong match? Put `package.name=LaunchBoxDatabaseID` in
   `/userdata/system/add-ons/android/settings/launchbox-overrides.conf`, then run **APK Manager → Rebuild 3D boxes**.
-* Files: `roms/android/images/<Game>-box3d.png` (used as image, thumbnail and boxart), `<Game>-front.png`,
+* Files (HippOS: `roms/androidgames/images/`): `roms/android/images/<Game>-box3d.png` (used as image, thumbnail and boxart), `<Game>-front.png`,
   `<Game>-fanart.jpg`, `<Game>-marquee.png`.
 * Rebuild everything over SSH: `bash /userdata/system/add-ons/android/install.sh --rescrape`.
 
@@ -240,14 +240,22 @@ Your normal ScreenScraper login is read from Batocera's scraper settings automat
 ├── bin/android-keeper                     ← Always-on background Android
 ├── bin/android-update                     ← add-on + Android updates (GitHub releases)
 ├── bin/android-theme-logos                ← Android logo into every installed theme
-├── chroot/  (session.sh, apk-manager.sh, store-play-apps.sh, padwatch.py (controllers + log), window.sh,
-│            scrape-launchbox.py, make_box3d.py, detect-input.sh, store-apk-url.py, box3d/, setup-waydroid.sh)  ← bind-mounted at /opt/android
-├── settings/android.conf                   ← ALWAYS_ON=0|1  (+ launchbox-overrides.conf)
-├── config/es_systems_android.cfg
-├── config/applications/*.desktop           ← F1 menu entries
+├── bin/android-in-session                 ← HippOS: back to root inside the desktop user's window
+├── hostbin/waydroid                       ← HippOS: session commands as the desktop user, the rest as root
+├── chroot/  (session.sh, apk-manager.sh, padwatch.py (controllers + log), window.sh, setup-waydroid.sh,
+│            scrape-launchbox.py, metadata_sources.py, make_box3d.py, detect-input.sh, installed-apps.sh,
+│            store-installed-apps.sh, app-data.sh, update-stores.sh, store-apk-url.py, install-package.sh, box3d/)
+│                                           ← /opt/android (bind mount; HippOS: symlink)
+├── settings/android.conf                   ← ALWAYS_ON  MULTI_WINDOW  BACKUP_SAVES  BACKUP_OBB  SCRAPE_SOURCES
+│                                              SCREENSCRAPER_*  (+ launchbox-overrides.conf, controller-overrides.conf)
+├── config/es_systems_android.cfg           ← Batocera: the ANDROID system
+├── config/es_systems_android-hippos.cfg    ← HippOS: takes over Android Games / Android Apps
+├── config/applications/*.desktop           ← F1 menu entries (HippOS: Desktop Shortcuts)
 ├── config/icons/*.png
 ├── systemd/android-waydroid.service
-└── rootfs/                                 ← Debian Trixie + Waydroid + Android image & app data
+├── waydroid_script/                        ← HippOS: ARM translation + Play certification helper
+└── rootfs/                                 ← Batocera: Debian Trixie + Waydroid + Android image & app data
+                                               (HippOS: none - Android lives in /userdata/system/waydroid)
 
 Symlinks:
 /userdata/system/services/android                         → add-ons/android/bin/android-service
@@ -255,6 +263,11 @@ Symlinks:
 /userdata/system/.local/share/applications/android-*.desktop → add-ons/android/config/applications/…
 /usr/share/applications/android-*.desktop                 → same (re-created by the service each boot)
 /etc/systemd/system/android-waydroid.service (HippOS)     → add-ons/android/systemd/…   (systemctl link)
+
+HippOS only (re-checked at every service start):
+/userdata/Desktop/android-*.desktop                       → add-ons/android/config/applications/…
+/opt/android → add-ons/android/chroot     /mnt/android-roms → /userdata/roms/androidgames
+/etc/android-addon → add-ons/android/settings     /var/log/android-addon → /userdata/system/logs
 ```
 * **Batocera:** toggle it in *Main Menu → System Settings → Services → android*, or run `batocera-services enable|disable android`.
 * **HippOS:** run `systemctl start|stop|status android-waydroid`.
@@ -294,4 +307,14 @@ Log: `/userdata/system/logs/android-controllers.log` (rotates at 1 MB). Each And
 
 ## Uninstall
 `bash /userdata/system/add-ons/android/uninstall.sh` (add `--keep-data` to keep apps + saves).
+On HippOS it only removes the add-on; Android, apps and saves stay (they're part of HippOS).
 Logs: `/userdata/system/logs/android.log`
+
+## Testing status
+Everything was developed and tested with simulated systems (stand-in Waydroid, stores and metadata services),
+not yet on real hardware. Worth confirming on a real machine first:
+* **Both:** binder support in the kernel, GPU rendering, controller pass-through, ARM translation.
+* **HippOS:** the Android window over HippOS's desktop (and Always-on hiding it), that Android Games / Android Apps
+  launch through the add-on, and that HippOS's own hotkeys don't clash with the Select+Start exit.
+
+Please open an issue with `/userdata/system/logs/android.log` if something doesn't work.

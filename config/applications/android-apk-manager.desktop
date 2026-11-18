@@ -2,7 +2,7 @@
 Version=1.0
 Type=Application
 Name=APK Manager (Android)
-Comment=Install, uninstall and back up Android apps (APK files + Google Play installs)
+Comment=Install, uninstall and back up apps + saves, updates, controllers
 Exec=/userdata/system/add-ons/android/bin/android-launch --manager
 Icon=/userdata/system/add-ons/android/config/icons/android-apk.png
 Terminal=false
