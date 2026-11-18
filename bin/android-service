@@ -3,6 +3,7 @@
 #   Batocera: symlinked to /userdata/system/services/android  -> toggled in
 #             MAIN MENU > SYSTEM SETTINGS > SERVICES, or `batocera-services enable android`
 #   HippOS / systemd: started by android-waydroid.service (linked with `systemctl link`)
+#   HippOS uses its own built-in Waydroid ("host mode", see android-common.sh)
 # Usage: android-service start|stop|restart|status|always-on [on|off]|app-mode [full|native]
 
 SELF="$(readlink -f "$0")"
@@ -10,7 +11,23 @@ BIN="$(dirname "$SELF")"
 . "$BIN/android-common.sh"
 need_root "$@"
 
+start_host() {          # HippOS: Waydroid is part of the system, we only prepare our side
+    log "service: starting ($ADDON_VERSION, HippOS built-in Waydroid)"
+    install_desktop_links
+    prepare_host
+    # after a HippOS OS update the extra packages come back via HippOS's apt restore; if they are
+    # still missing, put them back now (in the background, Android keeps working without them)
+    if ! command -v cage >/dev/null || ! command -v aapt >/dev/null || ! command -v dialog >/dev/null; then
+        ( bash "$ADDON_DIR/chroot/setup-waydroid.sh" --host --packages-only >>"$LOG" 2>&1 ) </dev/null &
+    fi
+    for _ in $(seq 1 30); do container_running && break; sleep 1; done
+    container_running && log "service: container RUNNING" || log "service: Waydroid container not running yet"
+    if always_on_wanted; then "$BIN/android-keeper" start; fi
+    return 0
+}
+
 start() {
+    [ "$HOST_MODE" = 1 ] && { start_host; return; }
     log "service: starting ($ADDON_VERSION)"
     install_desktop_links          # F1 menu entries (Batocera's /usr resets every boot)
     setup_binder || exit 1
@@ -38,6 +55,10 @@ start() {
 stop() {
     log "service: stopping"
     "$BIN/android-keeper" stop 2>/dev/null
+    if [ "$HOST_MODE" = 1 ]; then              # leave HippOS's container alone, just end our session
+        in_chroot waydroid session stop >>"$LOG" 2>&1
+        return 0
+    fi
     if [ -x "$ROOTFS/usr/bin/waydroid" ] && is_mounted "$ROOTFS/proc"; then
         in_chroot waydroid session stop   >>"$LOG" 2>&1
         in_chroot waydroid container stop >>"$LOG" 2>&1
@@ -49,7 +70,7 @@ stop() {
 }
 
 status() {
-    if is_mounted "$ROOTFS/proc" && container_running; then
+    if { [ "$HOST_MODE" = 1 ] || is_mounted "$ROOTFS/proc"; } && container_running; then
         echo "android: running"; in_chroot waydroid status
     else
         echo "android: stopped"; return 1
@@ -68,7 +89,7 @@ case "$1" in
         case "$2" in
             on)  setting_set ALWAYS_ON 1
                  always_on_supported || echo "Note: needs a plain X11 screen; on this display Android stays on-demand."
-                 is_mounted "$ROOTFS/proc" && "$BIN/android-keeper" start
+                 { [ "$HOST_MODE" = 1 ] || is_mounted "$ROOTFS/proc"; } && "$BIN/android-keeper" start
                  echo "Always-on: ON" ;;
             off) setting_set ALWAYS_ON 0; "$BIN/android-keeper" stop; echo "Always-on: OFF" ;;
             *)   echo "Always-on: $(setting_get ALWAYS_ON 0 | sed 's/1/ON/;s/0/OFF/')" ;;

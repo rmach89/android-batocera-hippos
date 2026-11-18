@@ -8,7 +8,7 @@
 #   .apkm   APKMirror bundle (unencrypted ones; encrypted .apkm needs APKMirror Installer)
 # Exit 0 = installed. Prints one result line.
 F="$1"
-ADATA=/root/.local/share/waydroid/data          # Android's /data, seen from the chroot
+ADATA=${ANDROID_DATA_DIR:-/root/.local/share/waydroid/data}          # Android's /data, seen from the chroot
 STAGE="$ADATA/local/tmp/apkm"                   # = /data/local/tmp/apkm inside Android
 WORK=/tmp/pkg-install
 [ -f "$F" ] || { echo "FAIL  $(basename "$F"): not found"; exit 1; }

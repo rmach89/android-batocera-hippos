@@ -1,0 +1,19 @@
+#!/bin/bash
+# HippOS (host mode) only - first on PATH for the add-on scripts, in place of /usr/bin/waydroid.
+# Waydroid's *session* belongs to the desktop user (the same session HippOS's own launcher uses,
+# so there is one Android with one set of apps). Container-level commands need root.
+REAL=/usr/bin/waydroid
+U="${ANDROID_SESSION_USER:-hippos}"
+
+case "$1" in
+    shell|container|upgrade|init|log|adb) exec "$REAL" "$@" ;;      # root (we are root)
+esac
+[ "$(id -un)" = "$U" ] && exec "$REAL" "$@"
+
+uid="$(id -u "$U")"; home="$(getent passwd "$U" | cut -d: -f6)"
+exec sudo -n -u "$U" /usr/bin/env -i \
+    HOME="$home" USER="$U" LANG=C.UTF-8 PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+    XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+    ${DISPLAY:+DISPLAY="$DISPLAY"} ${XAUTHORITY:+XAUTHORITY="$XAUTHORITY"} \
+    ${WAYLAND_DISPLAY:+WAYLAND_DISPLAY="$WAYLAND_DISPLAY"} \
+    "$REAL" "$@"

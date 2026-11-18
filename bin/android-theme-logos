@@ -10,6 +10,8 @@
 SELF="$(readlink -f "$0")"
 . "$(dirname "$SELF")/android-common.sh"
 need_root "$@"
+# HippOS: games live in its own Android Games system, which its themes already have a logo for
+[ "$HOST_MODE" = 1 ] && [ "$1" != --remove ] && exit 0
 
 ASSETS="$ADDON_DIR/config/theme"
 PLAN="$SETTINGS_DIR/theme-logos.plan"

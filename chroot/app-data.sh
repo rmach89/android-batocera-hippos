@@ -13,11 +13,11 @@
 #
 #   app-data.sh auto      run when you leave Android: OBB backups if BACKUP_OBB=1 and save backups
 #                         if BACKUP_SAVES=1 (android.conf), only for apps whose data changed
-ADATA=/root/.local/share/waydroid/data              # Android's /data, seen from the chroot
+ADATA=${ANDROID_DATA_DIR:-/root/.local/share/waydroid/data}              # Android's /data, seen from the chroot
 OBB=$ADATA/media/0/Android/obb
 EXT=$ADATA/media/0/Android/data
 SAVES=/mnt/android-roms/saves
-APKROOT=/mnt/android-roms/apk
+APKROOT=${ANDROID_APK_DIR:-/mnt/android-roms/apk}
 SOURCES=/mnt/android-roms/.cache/app-sources.txt
 CONF=/etc/android-addon/android.conf
 KEEP=5

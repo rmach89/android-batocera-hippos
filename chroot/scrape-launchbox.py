@@ -43,8 +43,9 @@ INPUT_OVERRIDES = "/etc/android-addon/controller-overrides.conf"
 BADGES = os.path.join(CACHE, "badges.json")                               # badge last drawn per box
 META_URL = "https://gamesdb.launchbox-app.com/Metadata.zip"
 IMG_URL = "https://images.launchbox-app.com/{}"
-WAYDROID_ICONS = "/root/.local/share/waydroid/data/icons"
+WAYDROID_ICONS = os.path.join(os.environ.get("ANDROID_DATA_DIR", "/root/.local/share/waydroid/data"), "icons")
 APP_SOURCES = os.path.join(ROMS, ".cache", "app-sources.txt")          # from installed-apps.sh
+APK_PACKAGES = os.path.join(ROMS, ".cache", "apk-packages.tsv")         # HippOS .apk games -> package
 SETTINGS = "/etc/android-addon/android.conf"
 DEFAULT_SOURCES = "launchbox screenscraper googleplay fdroid"
 MARK = "# managed-by-android-addon"
@@ -256,6 +257,17 @@ def main():
             continue
         pkg = next((l for l in lines[1:] if not l.startswith("#")), "")
         entries.append((os.path.basename(f), os.path.splitext(os.path.basename(f))[0], pkg))
+    # HippOS: .apk files in Android Games are games too (package names cached by the launcher)
+    if os.environ.get("ANDROID_HOST_MODE") == "1" and os.path.exists(APK_PACKAGES):
+        pk = {}
+        for l in open(APK_PACKAGES, errors="ignore"):
+            parts = l.rstrip("\n").split("\t")
+            if len(parts) == 3:
+                pk[os.path.realpath(parts[0])] = parts[2]
+        for f in sorted(glob.glob(os.path.join(ROMS, "*.apk")) + glob.glob(os.path.join(ROMS, "*.APK"))):
+            pkg = pk.get(os.path.realpath(f))
+            if pkg:
+                entries.append((os.path.basename(f), os.path.splitext(os.path.basename(f))[0], pkg))
 
     def read_conf(path):
         out = {}

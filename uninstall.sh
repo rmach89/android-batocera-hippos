@@ -3,6 +3,8 @@
 #   uninstall.sh              remove everything (apps + saves too)
 #   uninstall.sh --keep-data  remove menus/service/ES system but keep the Android rootfs
 #                             (apps + saves); run install.sh again to bring it all back.
+# HippOS: Android is part of HippOS, so its apps and saves are always kept; only the add-on
+# goes, and Android Games / Android Apps return to HippOS's standard setup.
 # Stored APKs in /userdata/roms/android/apk (incl. google-play/) are never deleted.
 SELF="$(readlink -f "$0")"
 DIR="$(dirname "$SELF")"
@@ -13,6 +15,11 @@ need_root "$@"
 "$ADDON_DIR/bin/android-theme-logos" --remove 2>/dev/null     # Android logo out of all themes
 "$ADDON_DIR/bin/android-service" stop 2>/dev/null
 umount_chroot
+if [ "$HOST_MODE" = 1 ]; then
+    for l in /opt/android /mnt/android-roms /etc/android-addon /var/log/android-addon /opt/waydroid_script; do
+        [ -L "$l" ] && rm -f "$l"
+    done
+fi
 
 # service
 batocera-services disable android >/dev/null 2>&1
@@ -35,7 +42,9 @@ done
 rm -rf "$ROMS_DIR/.cache"
 rm -f "$ROMS_DIR"/images/*-box3d.png "$ROMS_DIR"/images/*-front.png "$ROMS_DIR"/images/*-fanart.jpg "$ROMS_DIR"/images/*-marquee.png
 
-if [ "$1" = "--keep-data" ]; then
+if [ "$HOST_MODE" = 1 ]; then
+    rm -rf "$ADDON_DIR"          # holds no Android data on HippOS
+elif [ "$1" = "--keep-data" ]; then
     echo "Kept $ROOTFS - run install.sh again to restore Android with your apps."
 else
     if awk -v r="$ROOTFS" '$2 ~ "^"r' /proc/self/mounts | grep -q .; then

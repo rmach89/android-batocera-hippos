@@ -7,8 +7,8 @@
 #   roms/android/apk/aptoide/<package>/       Aptoide
 # (base.apk + any split APKs), so APK Manager can reinstall them without the store.
 # Apps you installed from files are not copied - the file itself is in apk/installed/.
-APKROOT=/mnt/android-roms/apk
-ADATA=/root/.local/share/waydroid/data     # Android's /data, seen from the chroot
+APKROOT=${ANDROID_APK_DIR:-/mnt/android-roms/apk}
+ADATA=${ANDROID_DATA_DIR:-/root/.local/share/waydroid/data}     # Android's /data, seen from the chroot
 
 n=0
 while IFS=$'\t' read -r pkg sid _label name; do

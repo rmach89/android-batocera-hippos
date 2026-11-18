@@ -33,11 +33,9 @@ mkdir -p "$STATE"
         log "keeper: no plain X11 display - always-on not possible, using on-demand mode"
         rm -f "$STATE/keeper.pid"; exit 0
     fi
-    attach_session_sockets
     log "keeper: booting Android in the background"
     rm -f "$STATE"/{ready,winid,visible,cmd,quit,hidden}
-    in_chroot env WLR_BACKENDS=x11 dbus-run-session -- cage -s -d -- \
-        /opt/android/session.sh persistent >>"$LOG" 2>&1
+    run_session --x11 persistent >>"$LOG" 2>&1
     log "keeper: Android background session ended"
     rm -f "$STATE"/{ready,keeper.pid,winid,visible}
 ) </dev/null >/dev/null 2>&1 &

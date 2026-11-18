@@ -1,10 +1,10 @@
 #!/bin/bash
 # Runs INSIDE the chroot as the child of cage (cage sets WAYLAND_DISPLAY).
-#   session.sh app <package>      on-demand: boot Android, launch <package>, shut down on exit
+#   session.sh app <package> [apk] on-demand: boot Android, (install <apk> if needed,) launch <package>
 #   session.sh manager            on-demand: APK Manager text UI
 #   session.sh persistent         always-on: boot once, stay hidden, obey /run/android/cmd
 #   session.sh confirm-uninstall  "Uninstall Android?" prompt
-MODE="$1"; TARGET="$2"
+MODE="$1"; TARGET="$2"; APK_FILE="$3"
 ST=/run/android
 CACHE=/mnt/android-roms/.cache/applist.txt
 mkdir -p "$ST" "$(dirname "$CACHE")"
@@ -17,6 +17,17 @@ if [ "$MODE" = confirm-uninstall ]; then
     $W find && $W show
     python3 /opt/android/padwatch.py --keys &
     PW=$!
+    if [ "$ANDROID_HOST_MODE" = 1 ]; then      # HippOS: Android itself is part of HippOS and stays
+    "${TERM_UI[@]}" sh -c '
+        rm -f /tmp/android-uninstall.answer
+        c=$(dialog --backtitle "Uninstall Android add-on" --default-item keep --menu \
+"This removes the add-on: APK Manager, the app store shortcuts, 3D boxes and\nthe add-on extras. Android Games / Android Apps go back to HippOS standard.\n\nAndroid itself, your apps and saves are part of HippOS and are KEPT." 16 76 2 \
+            keep "Cancel - keep the add-on" \
+            data "Remove the add-on (apps + saves stay)" 3>&1 1>&2 2>&3) || c=keep
+        echo "$c" > /tmp/android-uninstall.answer'
+    kill $PW 2>/dev/null; rm -f "$ST/quit"
+    exit 0
+    fi
     "${TERM_UI[@]}" sh -c '
         rm -f /tmp/android-uninstall.answer
         c=$(dialog --backtitle "Uninstall Android" --default-item keep --menu \
@@ -42,7 +53,14 @@ run_manager() {
 }
 # App stores in the F1 menu (F-Droid, Aurora Store, Aptoide) install themselves the first
 # time they are opened and update themselves to the newest official build (checked daily).
-ensure_app() { /opt/android/update-stores.sh ensure "$1"; }
+# A game started from its .apk file (HippOS Android Games) is installed on first launch.
+ensure_app() {      # ensure_app <package> [apk-file]
+    /opt/android/update-stores.sh ensure "$1"
+    if [ -n "$2" ] && [ -f "$2" ] && ! waydroid shell -- pm path "$1" 2>/dev/null | grep -q '^package:'; then
+        /opt/android/install-package.sh "$2" >/dev/null 2>&1
+        sleep 2
+    fi
+}
 
 leave_android() {   # back to ES: save state, refresh lists
     waydroid shell -- input keyevent KEYCODE_HOME >/dev/null 2>&1   # pauses the game
@@ -92,12 +110,12 @@ if [ "$MODE" = persistent ]; then
     i=0
     while running; do
         if [ -f "$ST/cmd" ]; then
-            read -r what pkg < "$ST/cmd"; rm -f "$ST/cmd" "$ST/quit" "$ST/hidden"
+            read -r what pkg apk < "$ST/cmd"; rm -f "$ST/cmd" "$ST/quit" "$ST/hidden"
             $W show
             if [ "$what" = manager ]; then
                 run_manager; touch "$ST/quit"
             else
-                ensure_app "$pkg"
+                ensure_app "$pkg" "$apk"
                 waydroid app launch "$pkg"
             fi
         fi
@@ -124,7 +142,7 @@ if [ "$MODE" = manager ]; then
 fi
 cache_apps
 sleep 2
-ensure_app "$TARGET"
+ensure_app "$TARGET" "$APK_FILE"
 waydroid app launch "$TARGET"
 i=0
 while [ ! -f "$ST/quit" ] && running; do

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Turns installed Android apps into EmulationStation entries (/userdata/roms/android/*.android).
+# Turns installed Android apps into EmulationStation entries (<roms>/*.android):
+#   Batocera: /userdata/roms/android     HippOS: /userdata/roms/androidgames (Android Games)
 # The app list is written by session.sh while Android is running (Waydroid can only list apps
 # with a live session), so this reads that cache.
 SELF="$(readlink -f "$0")"
@@ -40,6 +41,15 @@ is_system_pkg() {
     esac
     return 1
 }
+# HippOS: games you dropped in Android Games as .apk files already have an entry - no duplicate
+declare -A HAS_APK
+if [ "$HOST_MODE" = 1 ]; then
+    for f in "$ROMS_DIR"/*.apk "$ROMS_DIR"/*.APK; do
+        [ -f "$f" ] || continue
+        p="$(apk_package "$(readlink -f "$f")")"; [ -n "$p" ] && HAS_APK["$p"]=1
+    done
+fi
+
 declare -A KEEP
 name=""
 while IFS= read -r line; do
@@ -47,7 +57,7 @@ while IFS= read -r line; do
         Name:*)        name="${line#Name: }" ;;
         packageName:*) pkg="${line#packageName: }"
                        pkg="$(echo "$pkg" | tr -d '[:space:]')"
-                       if [ -n "$pkg" ] && ! is_system_pkg "$pkg"; then
+                       if [ -n "$pkg" ] && ! is_system_pkg "$pkg" && [ -z "${HAS_APK[$pkg]}" ]; then
                            clean="$(echo "${name:-$pkg}" | tr -d '/\\:*?"<>|' | sed 's/^[ .]*//;s/[ .]*$//')"
                            [ -z "$clean" ] && clean="$pkg"
                            write_entry "$clean" "$pkg"
@@ -66,15 +76,16 @@ for f in "$ROMS_DIR"/*.android; do
     fi
 done
 echo "sync: done (${#KEEP[@]} apps)"
+fix_owner
 
 # 3D jewel-case boxes + metadata (LaunchBox, ScreenScraper, Google Play, F-Droid) run in the background
 # so returning to EmulationStation is never delayed. Skip with: --no-scrape
-if [ "$1" != "--no-scrape" ] && [ -x "$ROOTFS/usr/bin/python3" ] && is_mounted "$ROOTFS/proc"; then
+if [ "$1" != "--no-scrape" ] && [ -x "$ROOTFS/usr/bin/python3" ] && { [ "$HOST_MODE" = 1 ] || is_mounted "$ROOTFS/proc"; }; then
     # your ScreenScraper login saved in Batocera's scraper settings (raises ScreenScraper's quota)
     ES_CFG=/userdata/system/configs/emulationstation/es_settings.cfg
     ss_get() { sed -n "s/.*name=\"$1\" value=\"\([^\"]*\)\".*/\1/p" "$ES_CFG" 2>/dev/null | tail -n1; }
     SS_USER="$(ss_get ScreenScraperUser)"; SS_PASS="$(ss_get ScreenScraperPass)"
     ( in_chroot env SS_USER="$SS_USER" SS_PASS="$SS_PASS" \
         python3 /opt/android/scrape-launchbox.py ${FORCE_SCRAPE:+--force} >>"$LOG" 2>&1
-      reload_es ) </dev/null >/dev/null 2>&1 &
+      fix_owner; reload_es ) </dev/null >/dev/null 2>&1 &
 fi

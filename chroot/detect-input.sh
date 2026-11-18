@@ -8,7 +8,7 @@
 # Wrong guess?  /userdata/system/add-ons/android/settings/controller-overrides.conf
 #               package.name=controller | touch | none
 OUT=/mnt/android-roms/.cache/input-support.txt
-ADATA=/root/.local/share/waydroid/data
+ADATA=${ANDROID_DATA_DIR:-/root/.local/share/waydroid/data}
 mkdir -p "$(dirname "$OUT")"; touch "$OUT"
 command -v aapt >/dev/null || { echo "detect-input: aapt missing - no badges"; exit 0; }
 

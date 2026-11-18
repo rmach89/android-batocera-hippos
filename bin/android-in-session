@@ -1,0 +1,7 @@
+#!/bin/bash
+# HippOS (host mode): cage runs as the desktop user and starts this; it switches to root
+# (keeping cage's WAYLAND_DISPLAY) and runs session.sh like the chroot version does.
+SELF="$(readlink -f "$0")"
+. "$(dirname "$SELF")/android-common.sh"
+need_root "$@"
+in_chroot /opt/android/session.sh "$@"

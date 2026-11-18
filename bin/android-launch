@@ -6,6 +6,8 @@
 #   android-launch --desktop                               F1 menu: Waydroid (Android home screen)
 #   android-launch --fdroid | --aurora | --aptoide         F1 menu: F-Droid / Aurora Store / Aptoide
 #   android-launch --stop                                  leave Android (like Select+Start)
+#   android-launch <file>.apk                              HippOS Android Games / Apps: install if needed, play
+#   android-launch <file>.waydroid                         HippOS Android Apps "Waydroid" entry (home screen)
 
 SELF="$(readlink -f "$0")"
 BIN="$(dirname "$SELF")"
@@ -21,6 +23,12 @@ case "$1" in
     --aurora)  MODE=app; TARGET="com.aurora.store" ;;       # Aurora Store (installed on first launch)
     --aptoide) MODE=app; TARGET="cm.aptoide.pt" ;;          # Aptoide      (installed on first launch)
     --app)     MODE=app; TARGET="$2" ;;
+    *.waydroid|*.WAYDROID) MODE=app; TARGET="com.android.launcher3" ;;
+    *.apk|*.APK)
+        [ -f "$1" ] || { log "launch: no such file $1"; exit 1; }
+        MODE=app; APK_FILE="$(readlink -f "$1")"
+        TARGET="$(apk_package "$APK_FILE")"
+        ;;
     *)
         [ -f "$1" ] || { log "launch: no such file $1"; exit 1; }
         MODE=app
@@ -40,7 +48,7 @@ fi
 if keeper_ready; then
     log "launch (always-on): $MODE $TARGET"
     rm -f "$STATE/hidden"
-    if [ "$MODE" = manager ]; then echo "manager" > "$STATE/cmd"; else echo "app $TARGET" > "$STATE/cmd"; fi
+    if [ "$MODE" = manager ]; then echo "manager" > "$STATE/cmd"; else echo "app $TARGET $APK_FILE" > "$STATE/cmd"; fi
     # wait until the player leaves Android (Select+Start) or the background session dies
     while keeper_ready && [ ! -f "$STATE/hidden" ]; do sleep 0.5; done
     rm -f "$STATE/hidden"
@@ -67,12 +75,10 @@ fi
 if pgrep -f "/opt/android/session.sh" >/dev/null 2>&1; then
     log "launch: Android is already open"; exit 0
 fi
-attach_session_sockets
-
-log "launch: $MODE $TARGET"
+log "launch: $MODE $TARGET${APK_FILE:+ ($APK_FILE)}"
 # cage = single-window kiosk Wayland compositor. It nests inside the host X11/Wayland
 # session (Batocera / HippOS) or takes the screen directly via DRM if there is none.
-in_chroot dbus-run-session -- cage -s -d -- /opt/android/session.sh "$MODE" "$TARGET" >>"$LOG" 2>&1
+run_session "$MODE" "$TARGET" "$APK_FILE" >>"$LOG" 2>&1
 
 # pick up anything installed or removed (Play Store installs, APK manager) as ES games
 "$BIN/android-sync-games" >>"$LOG" 2>&1

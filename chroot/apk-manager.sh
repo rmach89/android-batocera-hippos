@@ -4,15 +4,21 @@
 #   * reinstall stored Google Play apps from roms/android/apk/google-play
 #   * uninstall apps (Play Store or APK)
 #   * store copies of everything Google Play installed
-APK_DIR=/mnt/android-roms/apk
+APK_DIR=${ANDROID_APK_DIR:-/mnt/android-roms/apk}
 DONE_DIR=$APK_DIR/installed
 STORE_DIRS="google-play f-droid aurora aptoide"   # roms/android/apk/<store>/<package>/
 CACHE=/mnt/android-roms/.cache/applist.txt
-ADATA=/root/.local/share/waydroid/data
+ADATA=${ANDROID_DATA_DIR:-/root/.local/share/waydroid/data}
 WS=/opt/waydroid_script
 export DIALOGRC=/opt/android/dialogrc
 mkdir -p "$APK_DIR" "$DONE_DIR"
 T="APK Manager  v$(cat /opt/android/VERSION 2>/dev/null || echo '?')"
+# where things are, as the user sees them on the network share
+if [ "$ANDROID_HOST_MODE" = 1 ]; then          # HippOS
+    SHOW_APK="roms/android-apk"; SHOW_SAVES="roms/androidgames/saves"; SYSNAME="Android Games"
+else
+    SHOW_APK="roms/android/apk"; SHOW_SAVES="roms/android/saves"; SYSNAME="ANDROID"
+fi
 
 msg()  { dialog --backtitle "$T" --msgbox "$1" 16 72; }
 busy() { echo "$1" | dialog --backtitle "$T" --progressbox 6 72; }
@@ -60,7 +66,7 @@ install_menu() {
         done
     done
     if [ ${#items[@]} -eq 0 ]; then
-        msg "Nothing to install.\n\nCopy .apk / .xapk / .apks / .apkm files to the network share:\n  share / roms / android / apk\n  (/userdata/roms/android/apk)\n\nSaved store apps that are already installed are hidden."
+        msg "Nothing to install.\n\nCopy .apk / .xapk / .apks / .apkm files to the network share:\n  share / ${SHOW_APK//\// / }\n  (/userdata/$SHOW_APK)\n\nSaved store apps that are already installed are hidden."
         return
     fi
     local pick
@@ -85,7 +91,7 @@ install_menu() {
         esac
     done <<< "$pick"
     refresh_cache
-    msg "Installed: $ok   Failed: $fail\n\n$out\nNew games appear in the ANDROID system when you exit."
+    msg "Installed: $ok   Failed: $fail\n\n$out\nNew games appear in the $SYSNAME system when you exit."
 }
 
 uninstall_menu() {
@@ -101,13 +107,13 @@ uninstall_menu() {
     dialog --backtitle "$T" --yesno "Uninstall these apps and their save data?\n\n$pick\n\n(Saved copies of store apps are kept so you can reinstall.)" 18 72 || return
     while IFS= read -r p; do [ -n "$p" ] && { busy "Removing $p ..."; waydroid app remove "$p" >/dev/null 2>&1; }; done <<< "$pick"
     refresh_cache
-    msg "Removed. Their entries disappear from the ANDROID system when you exit."
+    msg "Removed. Their entries disappear from the $SYSNAME system when you exit."
 }
 
 store_menu() {
     busy "Saving copies of apps from Google Play, F-Droid, Aurora and Aptoide ..."
     local r; r=$(/opt/android/store-installed-apps.sh 2>&1 | tail -n1)
-    msg "$r\n\nLocation: roms/android/apk/<store>/\n  google-play  f-droid  aurora  aptoide\nThis also happens automatically every time you leave Android."
+    msg "$r\n\nLocation: $SHOW_APK/<store>/\n  google-play  f-droid  aurora  aptoide\nThis also happens automatically every time you leave Android."
 }
 
 CONF=/etc/android-addon/android.conf
@@ -130,7 +136,7 @@ saves_menu() {
         local c AS AO
         conf_is BACKUP_SAVES && AS=ON || AS=OFF
         conf_is BACKUP_OBB && AO=ON || AO=OFF
-        c=$(dialog --backtitle "$T" --menu "Game saves + game data\n\nSaves: roms/android/saves/<package>/  (newest 5 kept)\nOBB game data: next to the stored APKs in roms/android/apk/<store>/" 18 76 6 \
+        c=$(dialog --backtitle "$T" --menu "Game saves + game data\n\nSaves: $SHOW_SAVES/<package>/  (newest 5 kept)\nOBB game data: next to the stored APKs in $SHOW_APK/<store>/" 18 76 6 \
             1 "Back up an app's saves now" \
             2 "Restore an app's saves" \
             3 "Back up ALL apps' saves now" \
@@ -151,7 +157,7 @@ saves_menu() {
                dialog --backtitle "$T" --title "Saves backup" --textbox /tmp/saves.txt 20 76 ;;
             4) if conf_is BACKUP_SAVES; then conf_set BACKUP_SAVES 0; msg "Auto-backup of saves is OFF."
                else conf_set BACKUP_SAVES 1
-                    msg "Auto-backup of saves is ON.\n\nEvery time you leave Android, apps whose data changed are backed up\nto roms/android/saves/ (newest 5 per app). It runs in the background."
+                    msg "Auto-backup of saves is ON.\n\nEvery time you leave Android, apps whose data changed are backed up\nto $SHOW_SAVES/ (newest 5 per app). It runs in the background."
                fi ;;
             5) if conf_is BACKUP_OBB; then conf_set BACKUP_OBB 0; msg "OBB game data backup is OFF."
                else
@@ -271,7 +277,7 @@ play_cert() {
     id=$(cd "$WS" && ./venv/bin/python3 main.py certified 2>/dev/null | grep -Eo '[0-9]{15,}' | head -n1)
     if [ -n "$id" ]; then
         echo "$id" > "$APK_DIR/PLAY-STORE-DEVICE-ID.txt"
-        msg "Google Play device ID:\n\n  $id\n\n1. On a phone/PC open https://www.google.com/android/uncertified\n2. Sign in, paste the ID, Register.\n3. Wait ~10-20 min, then reopen the Play Store.\n\n(Saved to roms/android/apk/PLAY-STORE-DEVICE-ID.txt)"
+        msg "Google Play device ID:\n\n  $id\n\n1. On a phone/PC open https://www.google.com/android/uncertified\n2. Sign in, paste the ID, Register.\n3. Wait ~10-20 min, then reopen the Play Store.\n\n(Saved to $SHOW_APK/PLAY-STORE-DEVICE-ID.txt)"
     else
         msg "Could not read the device ID yet.\nOpen the Google Play Store once, wait a minute, then try again."
     fi
@@ -285,7 +291,7 @@ while true; do
         2 "Uninstall apps" \
         3 "Save copies of store apps now" \
         4 "Google Play: register this device ('not certified' fix)" \
-        5 "Refresh ANDROID game list" \
+        5 "Refresh $SYSNAME game list" \
         6 "Always-on (keep Android booted): $AO" \
         7 "App mode: $AM" \
         8 "Rebuild 3D boxes + game info (all sources)" \

@@ -88,7 +88,7 @@ die() { echo -e "\e[1;31mERROR:\e[0m $*" >&2; log "install: ERROR $*"; exit 1; }
 install_files() {
     say "Copying add-on to $ADDON_DIR"
     mkdir -p "$ADDON_DIR"
-    cp -rf "$SRC/bin" "$SRC/chroot" "$SRC/config" "$SRC/systemd" "$ADDON_DIR/"
+    cp -rf "$SRC/bin" "$SRC/chroot" "$SRC/config" "$SRC/systemd" "$SRC/hostbin" "$ADDON_DIR/"
     OLD_VERSION="$(cat "$ADDON_DIR/VERSION" 2>/dev/null)"
     cp -f "$SRC/install.sh" "$SRC/uninstall.sh" "$SRC/VERSION" "$SRC/bump-version.sh" "$ADDON_DIR/" 2>/dev/null
     cp -f "$SRC/VERSION" "$ADDON_DIR/chroot/VERSION" 2>/dev/null       # for APK Manager
@@ -96,12 +96,13 @@ install_files() {
     if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
         say "Updating v$OLD_VERSION -> v$NEW_VERSION"
     fi
-    chmod +x "$ADDON_DIR"/bin/* "$ADDON_DIR"/chroot/*.sh "$ADDON_DIR"/chroot/*.py "$ADDON_DIR"/*.sh
+    chmod +x "$ADDON_DIR"/bin/* "$ADDON_DIR"/hostbin/* "$ADDON_DIR"/chroot/*.sh "$ADDON_DIR"/chroot/*.py "$ADDON_DIR"/*.sh
 }
 
 make_links() {
     say "Creating symlinks"
     mkdir -p "$ROMS_DIR" "$APK_DIR/google-play" "$ROMS_DIR/.cache"
+    [ "$HOST_MODE" = 1 ] && prepare_host
 
     # F1 Applications menu: Google Play Store, APK Manager, Uninstall Android
     install_desktop_links
@@ -110,7 +111,11 @@ make_links() {
     for esdir in /userdata/system/configs/emulationstation /userdata/system/.emulationstation; do
         [ "$esdir" = /userdata/system/.emulationstation ] && [ ! -d "$esdir" ] && continue
         mkdir -p "$esdir"
-        ln -sfn "$ADDON_DIR/config/es_systems_android.cfg" "$esdir/es_systems_android.cfg"
+        if [ "$HOST_MODE" = 1 ]; then   # HippOS: take over its Android Games / Android Apps systems
+            ln -sfn "$ADDON_DIR/config/es_systems_android-hippos.cfg" "$esdir/es_systems_android.cfg"
+        else
+            ln -sfn "$ADDON_DIR/config/es_systems_android.cfg" "$esdir/es_systems_android.cfg"
+        fi
     done
 
     case "$OS" in
@@ -143,6 +148,7 @@ make_links() {
 
 # ---------------------------------------------------------------- rootfs
 bootstrap_rootfs() {
+    [ "$HOST_MODE" = 1 ] && return 0          # HippOS: Waydroid is part of the system
     [ -x "$ROOTFS/usr/bin/waydroid" ] && { say "Waydroid rootfs already present - skipping download"; return; }
     local base="https://images.linuxcontainers.org/images/debian/$DEBIAN_SUITE/amd64/default"
     say "Finding latest Debian $DEBIAN_SUITE rootfs"
@@ -156,7 +162,20 @@ bootstrap_rootfs() {
     rm -f "$ADDON_DIR/rootfs.tar.xz"
 }
 
+setup_android_host() {
+    [ -f "$ADDON_DIR/.android-setup-ok" ] && { say "HippOS Android already set up - skipping"; return; }
+    prepare_host
+    say "Setting up HippOS's built-in Android: add-on tools, ARM translation, controller settings"
+    say "(if Android was never started on this HippOS, its download runs first - needs internet)"
+    local out="$ADDON_DIR/setup.log"
+    bash "$ADDON_DIR/chroot/setup-waydroid.sh" --host 2>&1 | tee "$out" | grep --line-buffered -E '^(\[|SETUP-OK|WARN|E:)'
+    cat "$out" >> "$LOG"
+    grep -q SETUP-OK "$out" || die "setup failed - see $out"
+    touch "$ADDON_DIR/.android-setup-ok"
+}
+
 setup_android() {
+    [ "$HOST_MODE" = 1 ] && { setup_android_host; return; }
     [ -f "$ROOTFS/.android-setup-ok" ] && { say "Android already set up (kept data) - skipping"; return; }
     mount_chroot --bootstrap || die "could not mount chroot"
     rm -f "$ROOTFS/run/dbus/pid"
@@ -173,6 +192,12 @@ setup_android() {
 
 # ---------------------------------------------------------------- main
 ensure_packages() {   # bring older installs up to date with newer features
+    if [ "$HOST_MODE" = 1 ]; then
+        command -v cage >/dev/null && command -v aapt >/dev/null && command -v dialog >/dev/null && return 0
+        say "Installing the add-on's tools"
+        bash "$ADDON_DIR/chroot/setup-waydroid.sh" --host --packages-only >>"$LOG" 2>&1
+        return 0
+    fi
     mount_chroot || return
     if ! in_chroot sh -c 'command -v xdotool >/dev/null && command -v aapt >/dev/null && python3 -c "import PIL, numpy"' 2>/dev/null; then
         say "Adding packages for Always-on, 3D boxes and badges"
@@ -181,6 +206,7 @@ ensure_packages() {   # bring older installs up to date with newer features
 }
 
 UPDATING=0; [ -x "$ROOTFS/usr/bin/waydroid" ] && UPDATING=1
+[ "$HOST_MODE" = 1 ] && { UPDATING=0; [ -f "$ADDON_DIR/.android-setup-ok" ] && UPDATING=1; }
 stop_running() {   # an update replaces scripts Android may be running - stop it first
     if [ "$UPDATING" = 1 ] && [ -x "$ADDON_DIR/bin/android-service" ]; then
         say "Stopping Android while files are updated"
@@ -199,14 +225,19 @@ if [ "$1" = "--rescrape" ]; then   # rebuild every 3D box + metadata
       in_chroot python3 /opt/android/scrape-launchbox.py --force --refresh && reload_es; exit 0
 fi
 
-[ "$(uname -m)" = x86_64 ] || die "Only x86_64 is supported (Waydroid images are x86_64)."
-say "Android add-on v$(cat "$SRC/VERSION" 2>/dev/null) - detected OS: $OS"
+if [ "$HOST_MODE" = 1 ]; then
+    say "Android add-on v$(cat "$SRC/VERSION" 2>/dev/null) - detected HippOS: using its built-in Waydroid"
+else
+    [ "$(uname -m)" = x86_64 ] || die "Only x86_64 is supported here (Waydroid images are x86_64)."
+    say "Android add-on v$(cat "$SRC/VERSION" 2>/dev/null) - detected OS: $OS"
+fi
 setup_binder || die "This kernel has no binder support, so Android cannot run. (Batocera: use a recent x86_64 build.)"
 if [ "$UPDATING" = 1 ]; then
     say "Existing install found - updating to v$(cat "$SRC/VERSION") (apps, saves and settings are kept)"
 else
     free_kb=$(df -Pk /userdata | awk 'NR==2{print $4}')
-    [ "${free_kb:-0}" -gt 6000000 ] || die "Need at least 6 GB free on /userdata."
+    need_kb=6000000; [ "$HOST_MODE" = 1 ] && need_kb=2000000
+    [ "${free_kb:-0}" -gt "$need_kb" ] || die "Need at least $((need_kb / 1000000)) GB free on /userdata."
 fi
 if lspci 2>/dev/null | grep -iE 'vga|3d' | grep -qi nvidia; then
     say "WARNING: NVIDIA GPU detected - Waydroid needs Intel/AMD graphics (software rendering will be slow)."
@@ -221,6 +252,22 @@ make_links
 
 say "Starting service"
 "$ADDON_DIR/bin/android-service" start || die "service failed to start - see $LOG"
+if [ "$HOST_MODE" = 1 ]; then
+    reload_es
+    cat <<EOF
+
+  Android add-on v$(cat "$SRC/VERSION") is $( [ "$UPDATING" = 1 ] && echo updated || echo installed ) on HippOS (using HippOS's own Android).
+  * Desktop Shortcuts: Google Play Store, APK Manager, F-Droid, Aurora Store, Aptoide, Uninstall Android
+  * Android Games lists every installed game (plus your .apk files) with 3D boxes.
+  * Android Apps keeps HippOS's Waydroid entry.
+  * Store installs are copied to /userdata/roms/android-apk/<store>/
+  * Drop .apk files in /userdata/roms/android-apk, then open APK Manager
+    (or straight into roms/androidgames - they install on first launch).
+  * In Android: hold SELECT (hotkey) + START for 1 second to exit.
+  * Log: $LOG
+EOF
+    exit 0
+fi
 say "Adding the Android logo to your EmulationStation themes"
 "$ADDON_DIR/bin/android-theme-logos" --rescan
 reload_es

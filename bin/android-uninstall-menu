@@ -10,8 +10,7 @@ rm -f "$ANSWER"
 
 # ask using the same full-screen, controller-driven UI as APK Manager
 if [ -x "$ROOTFS/usr/bin/cage" ] && mount_chroot; then
-    attach_session_sockets
-    in_chroot dbus-run-session -- cage -s -d -- /opt/android/session.sh confirm-uninstall >>"$LOG" 2>&1
+    run_session confirm-uninstall >>"$LOG" 2>&1
     choice="$(cat "$ANSWER" 2>/dev/null)"
 elif command -v xterm >/dev/null 2>&1; then
     # rootfs damaged: plain terminal fallback

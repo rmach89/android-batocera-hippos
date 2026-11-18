@@ -1,6 +1,6 @@
 # Android add-on for Batocera & HippOS (Waydroid · Android 13 + Google Play)
 
-**Version: v1.1.1** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
+**Version: v1.1.2** (see `VERSION`). Versions go v1.x.x and every digit rolls over at 10:
 v1.0.9 → v1.1.0, v1.9.9 → v2.0.0. Bump with `./bump-version.sh` (or `./bump-version.sh 3`).
 Check the installed version with `/userdata/system/services/android version`.
 
@@ -14,7 +14,15 @@ Over SSH (as root on Batocera; HippOS asks for `sudo` by itself), this one line 
 curl -fsSL https://raw.githubusercontent.com/rmach89/android-batocera-hippos/main/install.sh | bash
 ```
 `install.sh` is self-contained. It always downloads the **newest version and every file it needs** from GitHub
-(a published release if there is one, otherwise `main`), then:
+(a published release or `main`, whichever is newer), then **detects the system by itself** and sets up the matching way.
+Nothing to answer or choose:
+
+| Detected | How Android runs | Menu entries | Games |
+|---|---|---|---|
+| **Batocera** (and others) | Waydroid in the add-on's own Debian chroot | F1 → Applications | new **ANDROID** system |
+| **HippOS** | HippOS's **own built-in Waydroid**: one Android, one set of apps | **Desktop Shortcuts** system | HippOS's **Android Games** / **Android Apps** systems, taken over (see [HippOS](#hippos)) |
+
+Then:
 - **New install:** checks your hardware, installs Waydroid, downloads Android 13 with Google Play, adds ARM
   translation, creates every symlink, then enables and starts the service. It's about a 2 GB download and takes 10–30 min.
 - **Already installed:** updates the add-on in place, stopping Android while files are replaced. Your apps, saves,
@@ -32,8 +40,29 @@ It needs only `bash`, `tar` and `curl` or `wget`.
 Prefer a download? Get the zip (**Code → Download ZIP** or from [Releases](https://github.com/rmach89/android-batocera-hippos/releases)),
 unzip it on the machine and run `bash install.sh`. It still updates itself if GitHub has something newer.
 
+## HippOS
+HippOS already ships Waydroid (Android + Google Play) and has no F1 Applications menu, so on HippOS the installer:
+- **uses HippOS's Waydroid**, so there's no second copy of Android. Apps you install anywhere show up everywhere,
+  and HippOS's own Android data in `/userdata/system/waydroid` stays where it is. If Android was never started
+  on that HippOS, the installer starts HippOS's own download and waits for it (internet needed).
+- installs the add-on's tools with apt (`cage`, `foot`, `dialog`, `aapt`, `xdotool`, …). HippOS puts user apt
+  packages back automatically after an OS update, and the service re-installs them if any are still missing.
+- puts **Google Play Store, APK Manager, F-Droid, Aurora Store, Aptoide** and **Uninstall Android** in the
+  **Desktop Shortcuts** system, with their icons (via `/userdata/Desktop`). HippOS's own Waydroid entry stays in
+  Android Apps, so there's no duplicate.
+- takes over **Android Games** (`roms/androidgames`) and **Android Apps**, keeping HippOS's names, theme and logos:
+  every installed game is listed automatically, `.apk` files you drop in there install on first launch, all of them
+  get 3D boxes and game info, and every launch goes through the add-on (Select+Start exit, Always-on, App mode,
+  controller handling, backups). A game you dropped as an `.apk` doesn't get a second entry.
+- uses `roms/android-apk/` for APK Manager's install folder and store backups (`android-apk/<store>/`). It sits
+  outside Android Games on purpose, otherwise every backup would show up as a game. Saves go to `roms/androidgames/saves/`.
+- works on Raspberry Pi 4/5 HippOS too (ARM games run natively there, no translation needed).
+
+**Uninstall** on HippOS removes only the add-on. Android, your apps and saves are part of HippOS and are always kept;
+Android Games / Android Apps go back to HippOS's standard setup.
+
 ## What you get
-**F1 → Applications menu** (seven entries)
+**F1 → Applications menu** (seven entries; on HippOS these are in Desktop Shortcuts, see [HippOS](#hippos))
 | Entry | Does |
 |---|---|
 | Google Play Store (Android) | Opens Android with the Play Store |
@@ -257,7 +286,7 @@ Log: `/userdata/system/logs/android-controllers.log` (rotates at 1 MB). Each And
 | `has=none`, or no START/SELECT | The exit combo can't work with that controller. Use another controller or the keyboard |
 
 ## Requirements / limits
-* x86_64, Intel or AMD GPU. NVIDIA falls back to software rendering, which is slow.
+* x86_64, Intel or AMD GPU (HippOS: also Raspberry Pi 4/5). NVIDIA falls back to software rendering, which is slow.
 * The kernel must have binder support (`binder_linux` or binderfs). The installer checks this first.
 * ARM-only games use ARM translation: libndk on AMD CPUs, libhoudini on Intel CPUs. Most games work.
   Some games with anti-cheat or SafetyNet checks will not run.

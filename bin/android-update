@@ -69,6 +69,14 @@ update_android() {
     say "stopping Android"
     "$BIN/android-keeper" stop 2>/dev/null
     in_chroot waydroid session stop >/dev/null 2>&1
+    if [ "$HOST_MODE" = 1 ]; then
+        # HippOS: Waydroid itself is updated with HippOS; only the Android image comes from here
+        say "downloading the newest Android system image (can be ~1 GB)"
+        in_chroot waydroid upgrade >>"$LOG" 2>&1 || say "WARN: waydroid upgrade reported an error (see log)"
+        "$BIN/android-service" restart >/dev/null 2>&1
+        say "Android updated"
+        return 0
+    fi
     say "updating Waydroid and the Debian helper system"
     in_chroot sh -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get -y -qq \
         -o Dpkg::Options::=--force-confold upgrade' >>"$LOG" 2>&1 || say "WARN: package update had errors (see log)"
