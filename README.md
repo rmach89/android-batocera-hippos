@@ -114,12 +114,6 @@ and format and the matching colour: white text if the theme's logos are light, d
   time the service starts. A new theme is picked up automatically.
 - `bin/android-theme-logos --rescan` re-checks all themes now; `--remove` takes the logo out again (uninstall does this).
 
-## Achievements
-RetroAchievements doesn't support Android. It only has achievement sets for retro consoles, played through
-emulators built with its `rcheevos` library, and Android games run natively here. Android games still have
-their own achievements: sign in to **Google Play Games** (included with the Google Play image) and games that
-use Play Games achievements track and show them as on a phone.
-
 ## Supported package files
 Drop them in `/userdata/roms/android/apk` (network share: `roms/android/apk`), then **APK Manager → Install apps**.
 
